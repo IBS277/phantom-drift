@@ -237,6 +237,16 @@ namespace fpSplit {
         if (started) return
         started = true
 
+        // Enable MakeCode's online multiplayer hosting: referencing a
+        // parts="multiplayer" method (onButtonEvent) on players 2-4 in reachable
+        // code makes the compiler flag this game as multiplayer, so the player
+        // icons and "Host multiplayer game" button appear when sharing. The
+        // handlers are intentionally empty — driving still reads inputs via
+        // isPressed() in drive(); this only flips the multiplayer flag on.
+        controller.player2.onButtonEvent(ControllerButton.A, ControllerButtonEvent.Pressed, function () { })
+        controller.player3.onButtonEvent(ControllerButton.A, ControllerButtonEvent.Pressed, function () { })
+        controller.player4.onButtonEvent(ControllerButton.A, ControllerButtonEvent.Pressed, function () { })
+
         scene.setBackgroundColor(0)
 
         controller.player1.up.onEvent(ControllerButtonEvent.Pressed, function () {
