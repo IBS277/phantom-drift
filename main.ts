@@ -39,7 +39,7 @@ namespace fpSplit {
     let plap = [0, 0, 0, 0]
 
     // ---- game state ----
-    const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2
+    const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
     let phase = PH_SELECT
     let numPlayers = 2
     let lightsT = 0
@@ -138,6 +138,30 @@ namespace fpSplit {
         drawMini(target, cxv + 5, ly, lightsT >= 2, C_GRN)
         if (lightsT >= 2) target.print("GO!", cxv - 8, oy + 24, C_GRN, image.font5)
     }
+    // Result overlay drawn on each player's view when the race is over.
+    // The winner's panel celebrates in their car colour; the others show who won
+    // and where they placed (by track position at the finish).
+    function drawResult(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
+        const cx = ox + (vw >> 1)
+        const midY = oy + (vh >> 1)
+        // dim the panel so the text reads clearly
+        target.fillRect(ox, oy, vw, vh, 0)
+        const winCol = CAR_COLORS[winner]
+        if (i == winner) {
+            // winner panel: big colour banner
+            target.fillRect(ox, midY - 9, vw, 18, winCol)
+            target.print("P" + (winner + 1) + " WINS!", cx - 18, midY - 4, 0, image.font8)
+            target.print("YOU WON", cx - 17, oy + vh - 9, winCol, image.font5)
+        } else {
+            // loser panel: name the winner + this player's finishing place
+            let place = 1
+            for (let j = 0; j < numPlayers; j++) if (j != i && pos[j] > pos[i]) place++
+            const suffix = place == 2 ? "nd" : place == 3 ? "rd" : "th"
+            target.print("P" + (winner + 1) + " WON", cx - 16, midY - 8, winCol, image.font5)
+            target.print("YOU: " + place + suffix, cx - 17, midY + 1, C_PANEL, image.font5)
+        }
+    }
+
     function drawRearMirror(target: Image, ox: number, oy: number, vw: number, i: number) {
         const mw = 30, mh = 12
         const mx = ox + vw - mw - 1, my = oy + 1
@@ -194,8 +218,8 @@ namespace fpSplit {
             if (lp >= lapsToWin && !finished) {
                 finished = true
                 winner = i
+                phase = PH_DONE
                 if (finishHandler) finishHandler(winner)
-                else game.gameOver(true)
             }
         }
     }
@@ -278,6 +302,7 @@ namespace fpSplit {
                 else { ox = (i % 2) * 80; oy = i < 2 ? 0 : 60; vw = 80; vh = 60 }
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
+                if (phase == PH_DONE) drawResult(target, ox, oy, vw, vh, i)
             }
             target.fillRect(0, 59, 160, 2, 15)
             if (numPlayers > 2) target.fillRect(79, 0, 2, 120, 15)
