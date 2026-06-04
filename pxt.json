@@ -1,0 +1,20 @@
+{
+    "name": "racing-multiplayer",
+    "version": "0.0.1",
+    "description": "First-person split-screen racing engine for MakeCode Arcade (2-4 players).",
+    "dependencies": {
+        "device": "*"
+    },
+    "files": [
+        "main.ts",
+        "README.md"
+    ],
+    "testFiles": [
+        "test.ts"
+    ],
+    "supportedTargets": [
+        "arcade"
+    ],
+    "preferredEditor": "tsprj",
+    "languageRestriction": "javascript-only"
+}

@@ -1,0 +1,13 @@
+# MakeCode / pxt build artifacts
+built/
+.pxt/
+yotta_modules/
+
+# Node
+node_modules/
+
+# Databases
+*.db
+
+# OS / editor cruft
+.DS_Store
