@@ -79,6 +79,43 @@ namespace fpSplit {
         return info.player4
     }
 
+    // Draw a rear-view car centred horizontally at cx with its base (bottom of
+    // the wheels) at baseY. Scales with cw/ch so it reads as a car at any
+    // distance: tyres, a lower body in the car colour, a tapered cabin/roof,
+    // a dark rear window and two red tail-lights. Clipped to [clipL, clipR).
+    function drawCar(target: Image, cx: number, baseY: number, cw: number, ch: number, col: number, clipL: number, clipR: number) {
+        const half = cw >> 1
+        const bodyH = Math.max(1, Math.round(ch * 0.55))   // lower body height
+        const roofH = ch - bodyH                            // cabin height
+        const wheelH = Math.max(1, Math.round(ch * 0.28))
+        const bodyTop = baseY - bodyH
+        const roofTop = bodyTop - roofH
+        const roofInset = Math.max(1, Math.round(cw * 0.18))
+
+        // ground shadow
+        clipH(target, cx - half - 1, cx + half + 1, baseY, 13, clipL, clipR)
+        // tyres (dark) sitting at the outer base corners
+        for (let wy = 0; wy < wheelH; wy++) {
+            clipH(target, cx - half, cx - half + Math.max(1, Math.idiv(cw, 4)), baseY - 1 - wy, 15, clipL, clipR)
+            clipH(target, cx + half - Math.max(1, Math.idiv(cw, 4)), cx + half, baseY - 1 - wy, 15, clipL, clipR)
+        }
+        // lower body in the player colour
+        for (let by = bodyTop; by < baseY - (wheelH >> 1); by++)
+            clipH(target, cx - half, cx + half, by, col, clipL, clipR)
+        // tapered cabin / roof, slightly narrower
+        for (let ry = roofTop; ry < bodyTop; ry++)
+            clipH(target, cx - half + roofInset, cx + half - roofInset, ry, col, clipL, clipR)
+        // dark rear window across the cabin
+        if (roofH >= 3)
+            clipH(target, cx - half + roofInset, cx + half - roofInset, roofTop + 1, 15, clipL, clipR)
+        // red tail-lights at the lower corners (only when big enough to show)
+        if (cw >= 8) {
+            const ll = Math.max(1, Math.idiv(cw, 6))
+            clipH(target, cx - half, cx - half + ll, bodyTop + 1, C_RED, clipL, clipR)
+            clipH(target, cx + half - ll, cx + half, bodyTop + 1, C_RED, clipL, clipR)
+        }
+    }
+
     // ---------------------------------------------------------------- rendering
     function renderView(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
         const hor = oy + Math.idiv(vh * 2, 5)
@@ -111,11 +148,10 @@ namespace fpSplit {
             const yb = Math.round(hor + tr * (bot - hor))
             const rwid = tr * hw
             const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
-            const cw = Math.max(2, Math.round(tr * hw * 0.9))
-            const ch = Math.max(1, Math.round(cw * 0.55))
-            const cl = Math.max(ox, cxj - (cw >> 1))
-            const cr = Math.min(ox + vw, cxj + (cw >> 1))
-            if (cr > cl && yb - ch >= oy && yb <= bot) target.fillRect(cl, yb - ch, cr - cl, ch, CAR_COLORS[j])
+            const cw = Math.max(3, Math.round(tr * hw * 0.95))
+            const ch = Math.max(2, Math.round(cw * 0.7))
+            if (cxj - (cw >> 1) < ox + vw && cxj + (cw >> 1) > ox && yb - ch >= oy && yb <= bot)
+                drawCar(target, cxj, yb, cw, ch, CAR_COLORS[j], ox, ox + vw)
         }
 
         // lap label
