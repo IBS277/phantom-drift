@@ -79,41 +79,58 @@ namespace fpSplit {
         return info.player4
     }
 
-    // Draw a rear-view car centred horizontally at cx with its base (bottom of
-    // the wheels) at baseY. Scales with cw/ch so it reads as a car at any
-    // distance: tyres, a lower body in the car colour, a tapered cabin/roof,
-    // a dark rear window and two red tail-lights. Clipped to [clipL, clipR).
+    // Draw a rear-view FORMULA 1 car centred horizontally at cx, base of the
+    // tyres at baseY. Scales with cw/ch so it reads at any distance. The F1
+    // silhouette from behind: two wide rear tyres, a narrow central engine
+    // cover (player colour), a central airbox fin, and a tall full-width rear
+    // wing with vertical end-plates plus a red rain light. Clipped to [L, R).
     function drawCar(target: Image, cx: number, baseY: number, cw: number, ch: number, col: number, clipL: number, clipR: number) {
         const half = cw >> 1
-        const bodyH = Math.max(1, Math.round(ch * 0.55))   // lower body height
-        const roofH = ch - bodyH                            // cabin height
-        const wheelH = Math.max(1, Math.round(ch * 0.28))
-        const bodyTop = baseY - bodyH
-        const roofTop = bodyTop - roofH
-        const roofInset = Math.max(1, Math.round(cw * 0.18))
+        const wheelW = Math.max(1, Math.round(cw * 0.26))   // each rear tyre width
+        const wheelH = Math.max(2, Math.round(ch * 0.62))   // tyres are tall
+        const bodyHalf = Math.max(1, half - wheelW)          // narrow body between tyres
+        const wingH = Math.max(1, Math.round(ch * 0.22))     // rear wing thickness
+        const wingTop = baseY - wheelH - wingH               // wing sits above the tyres
+        const bodyTop = baseY - wheelH                       // body/tyre top line
 
         // ground shadow
         clipH(target, cx - half - 1, cx + half + 1, baseY, 13, clipL, clipR)
-        // tyres (dark) sitting at the outer base corners
+
+        // two big rear tyres (black) at the outer edges
         for (let wy = 0; wy < wheelH; wy++) {
-            clipH(target, cx - half, cx - half + Math.max(1, Math.idiv(cw, 4)), baseY - 1 - wy, 15, clipL, clipR)
-            clipH(target, cx + half - Math.max(1, Math.idiv(cw, 4)), cx + half, baseY - 1 - wy, 15, clipL, clipR)
+            const y = baseY - 1 - wy
+            clipH(target, cx - half, cx - half + wheelW, y, 15, clipL, clipR)
+            clipH(target, cx + half - wheelW, cx + half, y, 15, clipL, clipR)
         }
-        // lower body in the player colour
-        for (let by = bodyTop; by < baseY - (wheelH >> 1); by++)
-            clipH(target, cx - half, cx + half, by, col, clipL, clipR)
-        // tapered cabin / roof, slightly narrower
-        for (let ry = roofTop; ry < bodyTop; ry++)
-            clipH(target, cx - half + roofInset, cx + half - roofInset, ry, col, clipL, clipR)
-        // dark rear window across the cabin
-        if (roofH >= 3)
-            clipH(target, cx - half + roofInset, cx + half - roofInset, roofTop + 1, 15, clipL, clipR)
-        // red tail-lights at the lower corners (only when big enough to show)
-        if (cw >= 8) {
-            const ll = Math.max(1, Math.idiv(cw, 6))
-            clipH(target, cx - half, cx - half + ll, bodyTop + 1, C_RED, clipL, clipR)
-            clipH(target, cx + half - ll, cx + half, bodyTop + 1, C_RED, clipL, clipR)
+
+        // narrow central engine cover / body in the player colour
+        for (let by = bodyTop; by < baseY; by++)
+            clipH(target, cx - bodyHalf, cx + bodyHalf, by, col, clipL, clipR)
+
+        // central airbox fin rising toward the wing (only when tall enough)
+        if (ch >= 6) {
+            const finW = Math.max(1, Math.idiv(cw, 8))
+            for (let fy = wingTop + wingH; fy < bodyTop; fy++)
+                clipH(target, cx - finW, cx + finW, fy, col, clipL, clipR)
         }
+
+        // tall full-width rear wing (dark) ...
+        for (let wy = wingTop; wy < wingTop + wingH; wy++)
+            clipH(target, cx - half, cx + half, wy, 15, clipL, clipR)
+        // ... with the player-colour stripe across its trailing edge
+        clipH(target, cx - half, cx + half, wingTop, col, clipL, clipR)
+        // vertical wing end-plates dropping down at each side
+        if (ch >= 6) {
+            const epW = Math.max(1, Math.idiv(cw, 10))
+            for (let ey = wingTop; ey < bodyTop; ey++) {
+                clipH(target, cx - half, cx - half + epW, ey, 15, clipL, clipR)
+                clipH(target, cx + half - epW, cx + half, ey, 15, clipL, clipR)
+            }
+        }
+
+        // central red rain light on the body (when big enough to show)
+        if (cw >= 8)
+            clipH(target, cx - 1, cx + 1, bodyTop + 1, C_RED, clipL, clipR)
     }
 
     // ---------------------------------------------------------------- rendering
