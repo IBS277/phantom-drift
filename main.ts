@@ -85,68 +85,69 @@ namespace fpSplit {
     // 2 red (player-tinted), 13 grey highlight, 15 black (tyres/wing/cockpit).
     // The red (2) pixels are recoloured per player; white/black stay fixed.
 
-    // NEAR — 27x26: full detail. Symmetric rear view: full-width wing on top with
-    // two struts, big shaded rear tyres each side, central cockpit/halo, livery.
+    // NEAR — 19x26: TOP-DOWN F1 seen from above. Pointed nose at the top, narrow
+    // body down the centre, four tyres splayed at the corners, cockpit in the
+    // middle, rear wing as a wide bar at the bottom. Red (2) is the player livery.
     const F1_NEAR = img`
-        . . . . f f f f f f f f f f f f f f f f f . . . . . .
-        . . . . f 1 1 2 2 2 2 2 2 2 2 2 2 2 1 1 f . . . . . .
-        . . . . f f f f f f 2 2 2 f f f f f f f . . . . . . .
-        . . . . . . . . f f 2 2 2 f f . . . . . . . . . . . .
-        . . . f f f . . f f 2 2 2 f f . . f f f . . . . . . .
-        . . f f f f f . f f f 1 f f f . f f f f f . . . . . .
-        . f f f f f f f f 1 1 1 1 1 f f f f f f f f . . . . .
-        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
-        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
-        . f f f f f f f 1 1 2 2 2 1 1 f f f f f f f . . . . .
-        . . f f f f f f 1 2 2 2 2 2 1 f f f f f f . . . . . .
-        . . . f f f . f 1 2 2 2 2 2 1 f . f f f . . . . . . .
-        . . . . . . f f 1 2 2 2 2 2 1 f f . . . . . . . . . .
-        . . . f f f f f 1 1 2 2 2 1 1 f f f f f . . . . . . .
-        . . f f f f f f 1 2 2 2 2 2 1 f f f f f f . . . . . .
-        . f f f f f f f 1 2 2 2 2 2 1 f f f f f f f . . . . .
-        f f f f f f f f 1 2 2 2 2 2 1 f f f f f f f f . . . .
-        f f f f f f f f 1 2 2 2 2 2 1 f f f f f f f f . . . .
-        f f f f f f f f 1 1 2 2 2 1 1 f f f f f f f f . . . .
-        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
-        . f f f f f f f 1 1 1 1 1 1 1 f f f f f f f . . . . .
-        . . f f f f f f f 2 2 2 2 2 f f f f f f f . . . . . .
-        . . f f f f f . f f 1 1 1 f f . f f f f f . . . . . .
-        . . . f f f . . f f 2 2 2 f f . . f f f . . . . . . .
-        . . . . . . . . f f f f f f f . . . . . . . . . . . .
-        . . . . . . . . . f f f f f . . . . . . . . . . . . .
+        . . . . . . . f 1 f . . . . . . . . .
+        . . . . . . f 2 2 2 f . . . . . . . .
+        . . . . . . f 2 2 2 f . . . . . . . .
+        . . . . . . f 2 1 2 f . . . . . . . .
+        . . . f f . f 2 2 2 f . f f . . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 1 2 1 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . . f f f f 1 1 1 f f f f . . . . .
+        . . . . . f f 1 f 1 f f . . . . . . .
+        . . . . . f f f f f f f . . . . . . .
+        . . . . . f f 2 2 2 f f . . . . . . .
+        . . . . . f f 2 1 2 f f . . . . . . .
+        . . . . . f f 2 2 2 f f . . . . . . .
+        . . . f f f f 1 2 1 f f f f . . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 1 2 1 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f f f 2 2 2 f f f f f . . . .
+        . . . f f f f 2 2 2 f f f f . . . . .
+        . f f f f f f f f f f f f f f f f . .
+        . f 1 1 1 1 1 1 1 1 1 1 1 1 1 1 f . .
+        . f f f f f f f f f f f f f f f f . .
     `
 
-    // MID — 16x16: simplified but still clearly an F1 (wing, 4 tyres, cockpit).
+    // MID — 13x16: simplified top-down (nose, 4 tyres, cockpit, wing bar).
     const F1_MID = img`
-        . . f f f f f f f f f f . . . .
-        . . f 1 2 2 2 2 2 2 1 f . . . .
-        . . f f f 2 2 2 f f f f . . . .
-        . f f . f 2 2 2 f . f f . . . .
-        f f f . f 1 1 1 f . f f f . . .
-        f f f . f 1 2 1 f . f f f . . .
-        f f f f f 2 2 2 f f f f f . . .
-        . f f f 1 1 2 1 1 f f f . . . .
-        f f f f 1 2 2 2 1 f f f f . . .
-        f f f f 1 2 2 2 1 f f f f . . .
-        f f f f 1 1 2 1 1 f f f f . . .
-        . f f f f 1 1 1 f f f f . . . .
-        . f f f f 2 2 2 f f f f . . . .
-        f f f . f 1 1 1 f . f f f . . .
-        . . . . f 2 2 2 f . . . . . . .
-        . . . . f f f f f . . . . . . .
+        . . . . . f f f . . . . .
+        . . . . f 2 2 2 f . . . .
+        . . f f f 2 1 2 f f f . .
+        . . f f f 2 2 2 f f f . .
+        . . f f f 1 2 1 f f f . .
+        . . f f f 2 2 2 f f f . .
+        . . . f f 1 1 1 f f . . .
+        . . . . f f f f f . . . .
+        . . . . f 2 1 2 f . . . .
+        . . f f f 1 2 1 f f f . .
+        . . f f f 2 2 2 f f f . .
+        . . f f f 2 1 2 f f f . .
+        . . f f f 2 2 2 f f f . .
+        . f f f f f f f f f f f .
+        . f 1 1 1 1 1 1 1 1 1 f .
+        . f f f f f f f f f f f .
     `
 
-    // FAR — 9x9: tiny silhouette, still reads as a winged open-wheeler.
+    // FAR — 9x9: tiny top-down silhouette (nose, 4 tyres, wing bar).
     const F1_FAR = img`
-        f f f f f f f f f
-        f 1 2 2 2 2 2 1 f
-        f f f 2 2 2 f f f
-        f f 1 2 2 2 1 f f
-        f f 1 2 2 2 1 f f
-        f f 1 2 2 2 1 f f
-        f f 1 1 2 1 1 f f
+        . . . f f f . . .
+        . . f 2 2 2 f . .
+        . f f 2 1 2 f f .
         . f f 2 2 2 f f .
-        . . f f f f f . .
+        . . f 1 2 1 f . .
+        . f f 2 2 2 f f .
+        . f f 2 1 2 f f .
+        f f f f f f f f f
+        f 1 1 1 1 1 1 1 f
     `
 
     // Per-player tinted copies of each size, built lazily. CAR_COLORS[p] replaces
@@ -265,7 +266,7 @@ namespace fpSplit {
             // closer so its tyres sit on the road surface near the camera
             // instead of floating at the projected centreline.
             const roadY = hor + tr * (bot - hor)
-            const yb = Math.round(roadY + tr * tr * (bot - roadY) * 0.6)
+            const yb = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
             const rwid = tr * hw
             const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
             const cw = Math.max(4, Math.round(tr * hw * 1.05))
