@@ -85,74 +85,106 @@ namespace fpSplit {
     // 2 red (player-tinted), 13 grey highlight, 15 black (tyres/wing/cockpit).
     // The red (2) pixels are recoloured per player; white/black stay fixed.
 
-    // NEAR — 19x26: TOP-DOWN F1 seen from above. Pointed nose at the top, narrow
-    // body down the centre, four tyres splayed at the corners, cockpit in the
-    // middle, rear wing as a wide bar at the bottom. Red (2) is the player livery.
-    const F1_NEAR = img`
-        . . . . . . . f 1 f . . . . . . . . .
-        . . . . . . f 2 2 2 f . . . . . . . .
-        . . . . . . f 2 2 2 f . . . . . . . .
-        . . . . . . f 2 1 2 f . . . . . . . .
-        . . . f f . f 2 2 2 f . f f . . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 1 2 1 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . . f f f f 1 1 1 f f f f . . . . .
-        . . . . . f f 1 f 1 f f . . . . . . .
-        . . . . . f f f f f f f . . . . . . .
-        . . . . . f f 2 2 2 f f . . . . . . .
-        . . . . . f f 2 1 2 f f . . . . . . .
-        . . . . . f f 2 2 2 f f . . . . . . .
-        . . . f f f f 1 2 1 f f f f . . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 1 2 1 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f f f 2 2 2 f f f f f . . . .
-        . . . f f f f 2 2 2 f f f f . . . . .
-        . f f f f f f f f f f f f f f f f . .
-        . f 1 1 1 1 1 1 1 1 1 1 1 1 1 1 f . .
-        . f f f f f f f f f f f f f f f f . .
+    // REAR-VIEW F1 cars (you see the back of the car ahead of you). Each size has
+    // two frames (A/B) whose tyre tread lines (1=white) sit at different rows, so
+    // alternating them reads as the wheels SPINNING. Red (2) = player livery.
+
+    // NEAR — 21x18: full wing on top, two tall rear tyres, central body + cockpit.
+    const F1_NEAR_A = img`
+        . . . . f f f f f f f f f f f f f . . . .
+        . . . . f 1 1 1 1 1 1 1 1 1 1 1 f . . . .
+        . . . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f . . . f 2 2 2 f . . . f f f . .
+        . f 1 f f . . f f 1 2 1 f f . . f f 1 f .
+        . f f f f . . f f 2 2 2 f f . . f f f f .
+        . f 1 f f . f f f 2 2 2 f f f . f f 1 f .
+        . f f f f . f f 1 2 2 2 1 f f . f f f f .
+        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
+        . f f f f . f f 2 2 2 2 2 f f . f f f f .
+        . f 1 f f . f f 1 2 2 2 1 f f . f f 1 f .
+        . f f f f . f f 2 2 2 2 2 f f . f f f f .
+        . f 1 f f . f f 2 1 2 1 2 f f . f f 1 f .
+        . f f f f . f f 2 2 2 2 2 f f . f f f f .
+        . f f f f . f f 1 1 1 1 1 f f . f f f f .
+        . f f f f . . f 2 2 2 2 2 f . . f f f f .
+        . . f f . . . f f 1 1 1 f f . . . f f . .
+        . . f f . . . . f f f f f . . . . f f . .
+    `
+    const F1_NEAR_B = img`
+        . . . . f f f f f f f f f f f f f . . . .
+        . . . . f 1 1 1 1 1 1 1 1 1 1 1 f . . . .
+        . . . . f f f f f 2 2 2 f f f f f . . . .
+        . . f f f . . . f 2 2 2 f . . . f f f . .
+        . f f f f . . f f 1 2 1 f f . . f f f f .
+        . f 1 f f . . f f 2 2 2 f f . . f f 1 f .
+        . f f f f . f f f 2 2 2 f f f . f f f f .
+        . f 1 f f . f f 1 2 2 2 1 f f . f f 1 f .
+        . f f f f . f f 2 2 2 2 2 f f . f f f f .
+        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
+        . f f f f . f f 1 2 2 2 1 f f . f f f f .
+        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
+        . f f f f . f f 2 1 2 1 2 f f . f f f f .
+        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
+        . f f f f . f f 1 1 1 1 1 f f . f f f f .
+        . f f f f . . f 2 2 2 2 2 f . . f f f f .
+        . . f f . . . f f 1 1 1 f f . . . f f . .
+        . . f f . . . . f f f f f . . . . f f . .
     `
 
-    // MID — 13x16: simplified top-down (nose, 4 tyres, cockpit, wing bar).
-    const F1_MID = img`
-        . . . . . f f f . . . . .
-        . . . . f 2 2 2 f . . . .
-        . . f f f 2 1 2 f f f . .
-        . . f f f 2 2 2 f f f . .
-        . . f f f 1 2 1 f f f . .
-        . . f f f 2 2 2 f f f . .
-        . . . f f 1 1 1 f f . . .
-        . . . . f f f f f . . . .
-        . . . . f 2 1 2 f . . . .
-        . . f f f 1 2 1 f f f . .
-        . . f f f 2 2 2 f f f . .
-        . . f f f 2 1 2 f f f . .
-        . . f f f 2 2 2 f f f . .
-        . f f f f f f f f f f f .
-        . f 1 1 1 1 1 1 1 1 1 f .
-        . f f f f f f f f f f f .
+    // MID — 15x12
+    const F1_MID_A = img`
+        . . . f f f f f f f f f . . .
+        . . . f 1 1 1 1 1 1 1 f . . .
+        . . f f f f 2 2 2 f f f f . .
+        . f 1 f . f 2 1 2 f . f 1 f .
+        . f f f . f 2 2 2 f . f f f .
+        . f 1 f . f 1 2 1 f . f 1 f .
+        . f f f . f 2 2 2 f . f f f .
+        . f 1 f . f 2 2 2 f . f 1 f .
+        . f f f . f 1 2 1 f . f f f .
+        . f f f . f 2 2 2 f . f f f .
+        . . f f . f 1 1 1 f . f f . .
+        . . f f . . f f f . . f f . .
+    `
+    const F1_MID_B = img`
+        . . . f f f f f f f f f . . .
+        . . . f 1 1 1 1 1 1 1 f . . .
+        . . f f f f 2 2 2 f f f f . .
+        . f f f . f 2 1 2 f . f f f .
+        . f 1 f . f 2 2 2 f . f 1 f .
+        . f f f . f 1 2 1 f . f f f .
+        . f 1 f . f 2 2 2 f . f 1 f .
+        . f f f . f 2 2 2 f . f f f .
+        . f 1 f . f 1 2 1 f . f 1 f .
+        . f f f . f 2 2 2 f . f f f .
+        . . f f . f 1 1 1 f . f f . .
+        . . f f . . f f f . . f f . .
     `
 
-    // FAR — 9x9: tiny top-down silhouette (nose, 4 tyres, wing bar).
-    const F1_FAR = img`
-        . . . f f f . . .
-        . . f 2 2 2 f . .
-        . f f 2 1 2 f f .
-        . f f 2 2 2 f f .
-        . . f 1 2 1 f . .
-        . f f 2 2 2 f f .
-        . f f 2 1 2 f f .
-        f f f f f f f f f
-        f 1 1 1 1 1 1 1 f
+    // FAR — 9x7
+    const F1_FAR_A = img`
+        . f f f f f f f .
+        . f 1 1 1 1 1 f .
+        f f f 2 2 2 f f f
+        f 1 f 1 2 1 f 1 f
+        f f f 2 2 2 f f f
+        f 1 f 2 2 2 f 1 f
+        . f . f 1 f . f .
+    `
+    const F1_FAR_B = img`
+        . f f f f f f f .
+        . f 1 1 1 1 1 f .
+        f f f 2 2 2 f f f
+        f f f 1 2 1 f f f
+        f 1 f 2 2 2 f 1 f
+        f f f 2 2 2 f f f
+        . f . f 1 f . f .
     `
 
-    // Per-player tinted copies of each size, built lazily. CAR_COLORS[p] replaces
-    // the red livery (palette 2). Index: [player][0=far,1=mid,2=near].
-    let f1Sprites: Image[][] = null
+    // Per-player tinted copies of each size and wheel-spin frame, built lazily.
+    // CAR_COLORS[p] replaces the red livery (palette 2).
+    // Index: f1Sprites[player][tier 0=far/1=mid/2=near][frame 0=A/1=B].
+    let f1Sprites: Image[][][] = null
     // content horizontal centre (in sprite px) per tier, so off-centre padding
     // in the literals doesn't shift the car sideways on screen.
     let f1Center: number[] = null
@@ -178,30 +210,34 @@ namespace fpSplit {
         f1Sprites = []
         f1Center = []
         f1Bottom = []
-        const bases = [F1_FAR, F1_MID, F1_NEAR]
+        // per tier: [frameA, frameB]
+        const bases = [[F1_FAR_A, F1_FAR_B], [F1_MID_A, F1_MID_B], [F1_NEAR_A, F1_NEAR_B]]
         for (let s = 0; s < 3; s++) {
-            f1Center.push(contentCenter(bases[s]))
-            f1Bottom.push(contentBottom(bases[s]))
+            f1Center.push(contentCenter(bases[s][0]))
+            f1Bottom.push(contentBottom(bases[s][0]))
         }
         for (let p = 0; p < 4; p++) {
-            const set: Image[] = []
+            const tiers: Image[][] = []
             for (let s = 0; s < 3; s++) {
-                const im = bases[s].clone()
-                im.replace(2, CAR_COLORS[p])   // tint the red livery to this player's colour
-                set.push(im)
+                const frames: Image[] = []
+                for (let fr = 0; fr < 2; fr++) {
+                    const im = bases[s][fr].clone()
+                    im.replace(2, CAR_COLORS[p])   // tint the red livery to this player's colour
+                    frames.push(im)
+                }
+                tiers.push(frames)
             }
-            f1Sprites.push(set)
+            f1Sprites.push(tiers)
         }
     }
 
-    // Draw an F1 opponent centred at cx with its base at baseY, sized by cw (the
-    // intended on-screen width). Picks the nearest sprite size, scales it to fit,
-    // and clips horizontally to [clipL, clipR).
-    function drawCar(target: Image, cx: number, baseY: number, cw: number, player: number, clipL: number, clipR: number, clipT: number, clipB: number) {
+    // Draw a rear-view F1 opponent centred at cx with its tyres planted at baseY,
+    // sized by cw. frame (0/1) selects the wheel-spin pose. Clips to [L,R)x[T,B).
+    function drawCar(target: Image, cx: number, baseY: number, cw: number, player: number, frame: number, clipL: number, clipR: number, clipT: number, clipB: number) {
         if (!f1Sprites) buildF1Sprites()
         // choose sprite tier by requested width
         const tier = cw >= 26 ? 2 : cw >= 15 ? 1 : 0
-        const spr = f1Sprites[player][tier]
+        const spr = f1Sprites[player][tier][frame & 1]
         // scale to roughly the requested width while keeping aspect
         const drawW = Math.max(4, Math.round(cw))
         const drawH = Math.round(spr.height * drawW / spr.width)
@@ -270,8 +306,12 @@ namespace fpSplit {
             const rwid = tr * hw
             const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
             const cw = Math.max(4, Math.round(tr * hw * 1.05))
+            // wheel-spin frame from the car's own distance travelled, so the
+            // tyres cycle as it moves (faster car => pos advances faster => the
+            // frame flips more often).
+            const frame = Math.floor(pos[j] * 0.6) & 1
             if (cxj + (cw >> 1) > ox && cxj - (cw >> 1) < ox + vw && yb > oy && yb <= bot)
-                drawCar(target, cxj, yb, cw, j, ox, ox + vw, oy, bot)
+                drawCar(target, cxj, yb, cw, j, frame, ox, ox + vw, oy, bot)
         }
 
         // lap label
