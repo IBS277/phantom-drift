@@ -155,6 +155,7 @@ namespace fpSplit {
     // content horizontal centre (in sprite px) per tier, so off-centre padding
     // in the literals doesn't shift the car sideways on screen.
     let f1Center: number[] = null
+    let f1Bottom: number[] = null   // tyre-bottom row per tier (for planting on road)
     function contentCenter(im: Image): number {
         let lo = im.width, hi = -1
         for (let x = 0; x < im.width; x++) {
@@ -164,11 +165,23 @@ namespace fpSplit {
         }
         return hi < 0 ? im.width / 2 : (lo + hi) / 2
     }
+    // Lowest non-transparent row (the tyre bottom) so the car can be planted on
+    // the road rather than floating above any empty rows at the sprite's base.
+    function contentBottom(im: Image): number {
+        for (let y = im.height - 1; y >= 0; y--)
+            for (let x = 0; x < im.width; x++)
+                if (im.getPixel(x, y) != 0) return y
+        return im.height - 1
+    }
     function buildF1Sprites() {
         f1Sprites = []
         f1Center = []
+        f1Bottom = []
         const bases = [F1_FAR, F1_MID, F1_NEAR]
-        for (let s = 0; s < 3; s++) f1Center.push(contentCenter(bases[s]))
+        for (let s = 0; s < 3; s++) {
+            f1Center.push(contentCenter(bases[s]))
+            f1Bottom.push(contentBottom(bases[s]))
+        }
         for (let p = 0; p < 4; p++) {
             const set: Image[] = []
             for (let s = 0; s < 3; s++) {
@@ -194,10 +207,16 @@ namespace fpSplit {
         const scale = drawW / spr.width
         // align the sprite's CONTENT centre (not its padded width) to cx
         const left = Math.round(cx - f1Center[tier] * scale)
-        const top = baseY - drawH
-        // ground shadow under the car (centred on cx)
-        const shHalf = Math.round(drawW * 0.4)
-        clipH(target, cx - shHalf, cx + shHalf, baseY, 13, clipL, clipR)
+        // plant the car: the tyre-bottom row sits exactly on baseY (the road),
+        // so empty rows below the tyres in the sprite don't make it float.
+        const belowTyres = (spr.height - 1 - f1Bottom[tier]) * scale
+        const top = Math.round(baseY + belowTyres - drawH)
+        // tight contact shadow right under the tyres (kept inside the panel)
+        const shHalf = Math.round(drawW * 0.42)
+        if (baseY >= clipT && baseY < clipB)
+            clipH(target, cx - shHalf, cx + shHalf, baseY, 13, clipL, clipR)
+        if (baseY + 1 >= clipT && baseY + 1 < clipB)
+            clipH(target, cx - (shHalf >> 1), cx + (shHalf >> 1), baseY + 1, 13, clipL, clipR)
         // blit the sprite scaled, nearest-neighbour, clipped to the panel rect
         for (let px = 0; px < drawW; px++) {
             const dx = left + px
@@ -242,7 +261,11 @@ namespace fpSplit {
             if (dA < 0) dA += lapLen
             if (dA <= 2 || dA >= SEE) continue
             const tr = 1 - dA / SEE
-            const yb = Math.round(hor + tr * (bot - hor))
+            // road point for this distance, biased downward as the car gets
+            // closer so its tyres sit on the road surface near the camera
+            // instead of floating at the projected centreline.
+            const roadY = hor + tr * (bot - hor)
+            const yb = Math.round(roadY + tr * tr * (bot - roadY) * 0.6)
             const rwid = tr * hw
             const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
             const cw = Math.max(4, Math.round(tr * hw * 1.05))
