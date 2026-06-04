@@ -79,58 +79,138 @@ namespace fpSplit {
         return info.player4
     }
 
-    // Draw a rear-view FORMULA 1 car centred horizontally at cx, base of the
-    // tyres at baseY. Scales with cw/ch so it reads at any distance. The F1
-    // silhouette from behind: two wide rear tyres, a narrow central engine
-    // cover (player colour), a central airbox fin, and a tall full-width rear
-    // wing with vertical end-plates plus a red rain light. Clipped to [L, R).
-    function drawCar(target: Image, cx: number, baseY: number, cw: number, ch: number, col: number, clipL: number, clipR: number) {
-        const half = cw >> 1
-        const wheelW = Math.max(1, Math.round(cw * 0.26))   // each rear tyre width
-        const wheelH = Math.max(2, Math.round(ch * 0.62))   // tyres are tall
-        const bodyHalf = Math.max(1, half - wheelW)          // narrow body between tyres
-        const wingH = Math.max(1, Math.round(ch * 0.22))     // rear wing thickness
-        const wingTop = baseY - wheelH - wingH               // wing sits above the tyres
-        const bodyTop = baseY - wheelH                       // body/tyre top line
+    // ---------------------------------------------------------------- F1 sprites
+    // Hand-drawn rear-view Formula 1 cars (red/white livery) at three sizes so a
+    // closer opponent shows more detail. Palette: 0 transparent, 1 white,
+    // 2 red (player-tinted), 13 grey highlight, 15 black (tyres/wing/cockpit).
+    // The red (2) pixels are recoloured per player; white/black stay fixed.
 
-        // ground shadow
-        clipH(target, cx - half - 1, cx + half + 1, baseY, 13, clipL, clipR)
+    // NEAR — 27x26: full detail. Symmetric rear view: full-width wing on top with
+    // two struts, big shaded rear tyres each side, central cockpit/halo, livery.
+    const F1_NEAR = img`
+        . . . . f f f f f f f f f f f f f f f f f . . . . . .
+        . . . . f 1 1 2 2 2 2 2 2 2 2 2 2 2 1 1 f . . . . . .
+        . . . . f f f f f f 2 2 2 f f f f f f f . . . . . . .
+        . . . . . . . . f f 2 2 2 f f . . . . . . . . . . . .
+        . . . f f f . . f f 2 2 2 f f . . f f f . . . . . . .
+        . . f f f f f . f f f 1 f f f . f f f f f . . . . . .
+        . f f f f f f f f 1 1 1 1 1 f f f f f f f f . . . . .
+        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
+        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
+        . f f f f f f f 1 1 2 2 2 1 1 f f f f f f f . . . . .
+        . . f f f f f f 1 2 2 2 2 2 1 f f f f f f . . . . . .
+        . . . f f f . f 1 2 2 2 2 2 1 f . f f f . . . . . . .
+        . . . . . . f f 1 2 2 2 2 2 1 f f . . . . . . . . . .
+        . . . f f f f f 1 1 2 2 2 1 1 f f f f f . . . . . . .
+        . . f f f f f f 1 2 2 2 2 2 1 f f f f f f . . . . . .
+        . f f f f f f f 1 2 2 2 2 2 1 f f f f f f f . . . . .
+        f f f f f f f f 1 2 2 2 2 2 1 f f f f f f f f . . . .
+        f f f f f f f f 1 2 2 2 2 2 1 f f f f f f f f . . . .
+        f f f f f f f f 1 1 2 2 2 1 1 f f f f f f f f . . . .
+        . f f f f f f f f 1 2 2 2 1 f f f f f f f f . . . . .
+        . f f f f f f f 1 1 1 1 1 1 1 f f f f f f f . . . . .
+        . . f f f f f f f 2 2 2 2 2 f f f f f f f . . . . . .
+        . . f f f f f . f f 1 1 1 f f . f f f f f . . . . . .
+        . . . f f f . . f f 2 2 2 f f . . f f f . . . . . . .
+        . . . . . . . . f f f f f f f . . . . . . . . . . . .
+        . . . . . . . . . f f f f f . . . . . . . . . . . . .
+    `
 
-        // two big rear tyres (black) at the outer edges
-        for (let wy = 0; wy < wheelH; wy++) {
-            const y = baseY - 1 - wy
-            clipH(target, cx - half, cx - half + wheelW, y, 15, clipL, clipR)
-            clipH(target, cx + half - wheelW, cx + half, y, 15, clipL, clipR)
+    // MID — 16x16: simplified but still clearly an F1 (wing, 4 tyres, cockpit).
+    const F1_MID = img`
+        . . f f f f f f f f f f . . . .
+        . . f 1 2 2 2 2 2 2 1 f . . . .
+        . . f f f 2 2 2 f f f f . . . .
+        . f f . f 2 2 2 f . f f . . . .
+        f f f . f 1 1 1 f . f f f . . .
+        f f f . f 1 2 1 f . f f f . . .
+        f f f f f 2 2 2 f f f f f . . .
+        . f f f 1 1 2 1 1 f f f . . . .
+        f f f f 1 2 2 2 1 f f f f . . .
+        f f f f 1 2 2 2 1 f f f f . . .
+        f f f f 1 1 2 1 1 f f f f . . .
+        . f f f f 1 1 1 f f f f . . . .
+        . f f f f 2 2 2 f f f f . . . .
+        f f f . f 1 1 1 f . f f f . . .
+        . . . . f 2 2 2 f . . . . . . .
+        . . . . f f f f f . . . . . . .
+    `
+
+    // FAR — 9x9: tiny silhouette, still reads as a winged open-wheeler.
+    const F1_FAR = img`
+        f f f f f f f f f
+        f 1 2 2 2 2 2 1 f
+        f f f 2 2 2 f f f
+        f f 1 2 2 2 1 f f
+        f f 1 2 2 2 1 f f
+        f f 1 2 2 2 1 f f
+        f f 1 1 2 1 1 f f
+        . f f 2 2 2 f f .
+        . . f f f f f . .
+    `
+
+    // Per-player tinted copies of each size, built lazily. CAR_COLORS[p] replaces
+    // the red livery (palette 2). Index: [player][0=far,1=mid,2=near].
+    let f1Sprites: Image[][] = null
+    // content horizontal centre (in sprite px) per tier, so off-centre padding
+    // in the literals doesn't shift the car sideways on screen.
+    let f1Center: number[] = null
+    function contentCenter(im: Image): number {
+        let lo = im.width, hi = -1
+        for (let x = 0; x < im.width; x++) {
+            let used = false
+            for (let y = 0; y < im.height; y++) if (im.getPixel(x, y) != 0) { used = true; break }
+            if (used) { if (x < lo) lo = x; hi = x }
         }
-
-        // narrow central engine cover / body in the player colour
-        for (let by = bodyTop; by < baseY; by++)
-            clipH(target, cx - bodyHalf, cx + bodyHalf, by, col, clipL, clipR)
-
-        // central airbox fin rising toward the wing (only when tall enough)
-        if (ch >= 6) {
-            const finW = Math.max(1, Math.idiv(cw, 8))
-            for (let fy = wingTop + wingH; fy < bodyTop; fy++)
-                clipH(target, cx - finW, cx + finW, fy, col, clipL, clipR)
+        return hi < 0 ? im.width / 2 : (lo + hi) / 2
+    }
+    function buildF1Sprites() {
+        f1Sprites = []
+        f1Center = []
+        const bases = [F1_FAR, F1_MID, F1_NEAR]
+        for (let s = 0; s < 3; s++) f1Center.push(contentCenter(bases[s]))
+        for (let p = 0; p < 4; p++) {
+            const set: Image[] = []
+            for (let s = 0; s < 3; s++) {
+                const im = bases[s].clone()
+                im.replace(2, CAR_COLORS[p])   // tint the red livery to this player's colour
+                set.push(im)
+            }
+            f1Sprites.push(set)
         }
+    }
 
-        // tall full-width rear wing (dark) ...
-        for (let wy = wingTop; wy < wingTop + wingH; wy++)
-            clipH(target, cx - half, cx + half, wy, 15, clipL, clipR)
-        // ... with the player-colour stripe across its trailing edge
-        clipH(target, cx - half, cx + half, wingTop, col, clipL, clipR)
-        // vertical wing end-plates dropping down at each side
-        if (ch >= 6) {
-            const epW = Math.max(1, Math.idiv(cw, 10))
-            for (let ey = wingTop; ey < bodyTop; ey++) {
-                clipH(target, cx - half, cx - half + epW, ey, 15, clipL, clipR)
-                clipH(target, cx + half - epW, cx + half, ey, 15, clipL, clipR)
+    // Draw an F1 opponent centred at cx with its base at baseY, sized by cw (the
+    // intended on-screen width). Picks the nearest sprite size, scales it to fit,
+    // and clips horizontally to [clipL, clipR).
+    function drawCar(target: Image, cx: number, baseY: number, cw: number, player: number, clipL: number, clipR: number, clipT: number, clipB: number) {
+        if (!f1Sprites) buildF1Sprites()
+        // choose sprite tier by requested width
+        const tier = cw >= 26 ? 2 : cw >= 15 ? 1 : 0
+        const spr = f1Sprites[player][tier]
+        // scale to roughly the requested width while keeping aspect
+        const drawW = Math.max(4, Math.round(cw))
+        const drawH = Math.round(spr.height * drawW / spr.width)
+        const scale = drawW / spr.width
+        // align the sprite's CONTENT centre (not its padded width) to cx
+        const left = Math.round(cx - f1Center[tier] * scale)
+        const top = baseY - drawH
+        // ground shadow under the car (centred on cx)
+        const shHalf = Math.round(drawW * 0.4)
+        clipH(target, cx - shHalf, cx + shHalf, baseY, 13, clipL, clipR)
+        // blit the sprite scaled, nearest-neighbour, clipped to the panel rect
+        for (let px = 0; px < drawW; px++) {
+            const dx = left + px
+            if (dx < clipL || dx >= clipR) continue
+            const sx = Math.idiv(px * spr.width, drawW)
+            for (let py = 0; py < drawH; py++) {
+                const dy = top + py
+                if (dy < clipT || dy >= clipB) continue
+                const sy = Math.idiv(py * spr.height, drawH)
+                const c = spr.getPixel(sx, sy)
+                if (c != 0) target.setPixel(dx, dy, c)
             }
         }
-
-        // central red rain light on the body (when big enough to show)
-        if (cw >= 8)
-            clipH(target, cx - 1, cx + 1, bodyTop + 1, C_RED, clipL, clipR)
     }
 
     // ---------------------------------------------------------------- rendering
@@ -165,10 +245,9 @@ namespace fpSplit {
             const yb = Math.round(hor + tr * (bot - hor))
             const rwid = tr * hw
             const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
-            const cw = Math.max(3, Math.round(tr * hw * 0.95))
-            const ch = Math.max(2, Math.round(cw * 0.7))
-            if (cxj - (cw >> 1) < ox + vw && cxj + (cw >> 1) > ox && yb - ch >= oy && yb <= bot)
-                drawCar(target, cxj, yb, cw, ch, CAR_COLORS[j], ox, ox + vw)
+            const cw = Math.max(4, Math.round(tr * hw * 1.05))
+            if (cxj + (cw >> 1) > ox && cxj - (cw >> 1) < ox + vw && yb > oy && yb <= bot)
+                drawCar(target, cxj, yb, cw, j, ox, ox + vw, oy, bot)
         }
 
         // lap label
