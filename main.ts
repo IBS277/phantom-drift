@@ -609,23 +609,7 @@ namespace fpSplit {
             const sz = Math.max(2, Math.round(tr * 9))
             if (yI <= oy || yI > bot) continue
             if (it.kind == 1) {
-                // boost token drawn as a GAS / fuel pump so it's obviously speed:
-                // a yellow can body, a dark spout/handle, and a red fuel drop.
-                const h = sz * 2, w = Math.max(2, Math.round(sz * 1.1))
-                const topY = yI - h
-                // yellow body
-                for (let yy = 0; yy < h; yy++)
-                    clipH(target, xI - w, xI + w, topY + yy, C_YEL, ox, ox + vw)
-                if (sz >= 4) {
-                    // dark nozzle/handle on the upper-right
-                    clipH(target, xI + w - 1, xI + w + 2, topY + 2, 15, ox, ox + vw)
-                    clipH(target, xI + w + 1, xI + w + 2, topY + 3, 15, ox, ox + vw)
-                    // dark cap on top
-                    clipH(target, xI - 2, xI + 2, topY - 1, 15, ox, ox + vw)
-                    // red fuel drop / 'F' mark in the centre
-                    clipH(target, xI - 1, xI + 1, topY + (h >> 1), C_RED, ox, ox + vw)
-                    target.setPixel(xI, topY + (h >> 1) + 1, C_RED)
-                }
+                drawGasPump(target, xI, yI, sz, ox, ox + vw)
             } else {
                 // oil slick: dark ellipse on the tarmac
                 for (let r = 0; r < (sz >> 1) + 1; r++)
@@ -768,68 +752,150 @@ namespace fpSplit {
         target.print(ord, px + 2, py + 1, pcol, image.font5)
     }
 
-    // Animated pit-stop scene: the car in the box, a jack lifting it, and two
-    // crew on each side changing the wheels (wheels pop off, new ones on), then
-    // the car drops. Driven by pitProg (0..1) for the stages + clock for motion.
+    // Animated F1 pit-stop scene, staged by pitProg (0..1):
+    //   .00-.18 car drives in   .18-.30 jacks lift   .30-.70 wheel change
+    //   .70-.82 jacks drop      .82-1.0 lollipop GO + launch out
+    // `clock` drives the fast impact-wrench flicker and crew motion.
     function drawPit(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
-        const cx = ox + (vw >> 1), cy = oy + (vh >> 1)
-        // backdrop pit-garage box
-        target.fillRect(ox + 4, oy + 4, vw - 8, vh - 8, 0)
-        target.drawRect(ox + 4, oy + 4, vw - 8, vh - 8, C_YEL)
-        target.print("PIT STOP", cx - 16, oy + 6, C_YEL, image.font5)
-
-        const p = Math.min(1, pitProg[i])
+        const cx = ox + (vw >> 1)
+        const groundY = oy + vh - 12       // tarmac line the wheels rest on
         const col = CAR_COLORS[i]
-        const wig = (Math.floor(clock * 18) & 1)        // fast wrench wiggle
-        // stages: 0-.25 jack up, .25-.7 wheels off & on, .7-1 drop & done
-        const lifted = p > 0.2 && p < 0.85
-        const carY = cy - (lifted ? 5 : 1)              // car rises when jacked
+        const p = Math.min(1, pitProg[i])
+        const flick = Math.floor(clock * 22) & 1          // impact-wrench flicker
+        const bob = Math.floor(clock * 6) & 1             // crew bob
 
-        // CAR body (top-down, player colour) centred
-        target.fillRect(cx - 7, carY - 3, 14, 9, col)
-        target.fillRect(cx - 3, carY - 6, 6, 4, col)     // nose
-        target.fillRect(cx - 2, carY, 4, 3, 1)           // cockpit
-        // jack under the car (a wedge) while lifted
-        if (lifted) {
-            target.fillRect(cx - 1, carY + 6, 2, 4, 15)
-            clipH(target, cx - 3, cx + 3, carY + 10, 15, ox, ox + vw)
+        // garage backdrop (dark) with a yellow header
+        target.fillRect(ox + 3, oy + 3, vw - 6, vh - 6, 0)
+        target.fillRect(ox + 3, oy + 3, vw - 6, 9, C_PANEL)
+        target.print("PIT STOP", cx - 16, oy + 4, C_YEL, image.font5)
+        // floor line
+        clipH(target, ox + 3, ox + vw - 3, groundY + 7, C_PANEL, ox, ox + vw)
+
+        // --- car horizontal position: drive in, hold, launch out ---
+        let carDX = 0
+        if (p < 0.18) carDX = Math.round((0.18 - p) / 0.18 * -(vw))      // enters from left
+        else if (p > 0.85) carDX = Math.round((p - 0.85) / 0.15 * (vw))  // launches right
+        const cxx = cx + carDX
+
+        // --- jack lift: car body rises a few px while jacked ---
+        const jacked = p >= 0.18 && p <= 0.82
+        const lift = jacked ? 4 : 0
+        const bodyY = groundY - 6 - lift
+
+        // wheels (4) — side view: two visible, front + rear
+        const swapping = p > 0.30 && p < 0.70
+        const wheelOff = swapping && flick
+        const newWheel = swapping && p > 0.5
+        const wheelR = 3
+        const frontWX = cxx + 9, rearWX = cxx - 9
+
+        // --- car body (side profile) in player colour ---
+        // floor pan
+        target.fillRect(cxx - 13, bodyY + 4, 26, 3, col)
+        // sidepod / chassis
+        target.fillRect(cxx - 9, bodyY, 18, 5, col)
+        // nose (front, right)
+        target.fillRect(cxx + 9, bodyY + 2, 6, 3, col)
+        target.fillRect(cxx + 14, bodyY + 3, 2, 2, col)
+        // airbox + halo over the cockpit
+        target.fillRect(cxx - 3, bodyY - 3, 5, 3, col)
+        target.fillRect(cxx - 4, bodyY - 1, 7, 1, 15)     // halo bar
+        // rear wing (left)
+        target.fillRect(cxx - 15, bodyY - 2, 2, 6, 15)
+        target.fillRect(cxx - 15, bodyY - 2, 5, 1, col)
+        // driver helmet in the cockpit
+        target.fillRect(cxx - 2, bodyY - 2, 3, 2, 1)
+        // two visible wheels (front & rear), inlined for both positions
+        for (let wn = 0; wn < 2; wn++) {
+            const wxc = wn == 0 ? frontWX : rearWX
+            if (wheelOff) {
+                // old wheel rolled away to the side during the swap
+                const roll = cxx - 20 - Math.floor((p - 0.30) * 30)
+                fillDisc(target, roll, groundY + 1, wheelR, 15)
+            } else {
+                fillDisc(target, wxc, groundY + 1 - lift, wheelR, 15)
+                target.setPixel(wxc, groundY + 1 - lift, newWheel ? C_RED : C_YEL)   // hub
+                if (swapping && flick) target.setPixel(wxc + (bob ? 2 : -2), groundY - 1 - lift, C_YEL)
+            }
         }
 
-        // WHEELS: during the swap stage they blink off; otherwise solid black
-        const swapping = p > 0.25 && p < 0.7
-        const showWheel = !(swapping && wig)
-        const wheelCol = swapping && !wig ? C_RED : 15   // new wheel flashes red briefly
-        if (showWheel) {
-            const wxL = cx - 9, wxR = cx + 7
-            target.fillRect(wxL, carY - 2, 3, 3, wheelCol)
-            target.fillRect(wxL, carY + 3, 3, 3, wheelCol)
-            target.fillRect(wxR, carY - 2, 3, 3, wheelCol)
-            target.fillRect(wxR, carY + 3, 3, 3, wheelCol)
+        // --- jacks (front & rear) wedge under the car while lifted ---
+        if (jacked) {
+            target.fillRect(cxx + 15, bodyY + 4, 2, lift + 3, C_YEL)   // front jack arm
+            target.fillRect(cxx - 17, bodyY + 4, 2, lift + 3, C_YEL)   // rear jack arm
         }
 
-        // CREW: a figure each side working the wheels (arms wiggle while swapping)
-        drawCrew(target, cx - 16, carY - 1, swapping ? wig : 0)
-        drawCrew(target, cx + 13, carY - 1, swapping ? (1 - wig) : 0)
-        // a stack of fresh tyres to the side
-        target.fillRect(ox + 8, cy + 4, 5, 2, 15)
-        target.fillRect(ox + 8, cy + 6, 5, 2, 15)
+        // --- crew: 2 gunners (front/rear wheel) + 2 jack men + lollipop ---
+        if (p >= 0.15 && p <= 0.86) {
+            const arm = swapping ? flick : 0
+            drawCrew(target, frontWX - 7, groundY - 7 + (bob ? 0 : 1), col, arm)   // front gunner
+            drawCrew(target, rearWX + 2, groundY - 7 + (bob ? 1 : 0), col, swapping ? (1 - flick) : 0)  // rear gunner
+            drawCrew(target, cxx + 17, bodyY - 4, col, 0)     // front jack man
+            drawCrew(target, cxx - 22, bodyY - 4, col, 0)     // rear jack man
+        }
+        // lollipop man out front: red STOP, then green GO at the end
+        const lolly = p > 0.82
+        target.fillRect(cxx + 20, bodyY - 10, 1, 12, 15)
+        fillDisc(target, cxx + 20, bodyY - 11, 2, lolly ? C_GRN : C_RED)
 
-        // service progress bar at the bottom
-        const bw = vw - 24
-        target.drawRect(ox + 12, oy + vh - 9, bw, 4, C_PANEL)
-        const fw = Math.round((bw - 2) * p)
-        if (fw > 0) target.fillRect(ox + 13, oy + vh - 8, fw, 2, C_GRN)
-        // "+5s" penalty notice
-        target.print("+5s", cx - 5, oy + 13, C_RED, image.font5)
+        // fresh-tyre stack in the corner
+        fillDisc(target, ox + 9, groundY + 2, 2, 15)
+        fillDisc(target, ox + 9, groundY - 2, 2, 15)
+
+        // status text
+        const msg = p < 0.18 ? "CAR IN..." : p > 0.82 ? "GO GO GO!" : "CHANGING TYRES"
+        target.print(msg, cx - msg.length * 2, oy + vh - 6, p > 0.82 ? C_GRN : 1, image.font5)
+        // "+5s" penalty notice top-right of the box
+        target.print("+5s", ox + vw - 16, oy + 5, C_RED, image.font5)
     }
-    // A tiny pit-crew member; `arm` (0/1) animates the wrench arm up/down.
-    function drawCrew(target: Image, x: number, y: number, arm: number) {
-        target.fillRect(x + 1, y, 3, 2, 8)        // blue cap/helmet
-        target.fillRect(x + 1, y + 2, 3, 4, 6)    // green overalls
-        target.fillRect(x + 1, y + 6, 1, 2, 15)   // legs
-        target.fillRect(x + 3, y + 6, 1, 2, 15)
-        // wrench arm reaches toward the car, wiggling
-        target.fillRect(x + 4, y + 2 + arm, 2, 1, 15)
+    // Draw a fuel pump (boost pickup) standing on the road, base at (bx, byBase),
+    // scaled by sz. Red body + light-blue screen with dark bars + grey nozzle/hose,
+    // matching a classic gas-pump icon. Clipped to [clipL, clipR).
+    function drawGasPump(target: Image, bx: number, byBase: number, sz: number, clipL: number, clipR: number) {
+        const w = Math.max(3, Math.round(sz * 1.2))   // body half-width
+        const h = Math.max(6, sz * 2 + 2)             // body height
+        const top = byBase - h
+        const GREY = 13, RED = C_RED, SCREEN = 9, DARK = 15
+        // pump body (red)
+        for (let yy = 0; yy < h; yy++)
+            clipH(target, bx - w, bx + w, top + yy, RED, clipL, clipR)
+        // base foot (grey)
+        clipH(target, bx - w - 1, bx + w + 1, byBase, GREY, clipL, clipR)
+        if (sz >= 4) {
+            // blue display screen in the upper body
+            const scTop = top + 1, scBot = top + Math.max(2, Math.idiv(h, 2))
+            for (let yy = scTop; yy < scBot; yy++)
+                clipH(target, bx - w + 1, bx + w - 1, yy, SCREEN, clipL, clipR)
+            // two dark display bars
+            const midX = bx - 1
+            clipH(target, bx - w + 2, midX, scTop + 1, DARK, clipL, clipR)
+            if (scBot - scTop >= 4) clipH(target, bx - w + 2, midX, scTop + 3, DARK, clipL, clipR)
+            // grey nozzle + hose on the right side
+            clipH(target, bx + w, bx + w + 2, top + 2, GREY, clipL, clipR)        // nozzle head
+            target.setPixel(bx + w + 2, top + 3, GREY)
+            for (let yy = top + 3; yy < byBase - 2; yy++)                         // hose curving down
+                target.setPixel(bx + w + 1 + ((yy & 2) ? 1 : 0), yy, GREY)
+        }
+    }
+
+    // Small filled disc (MakeCode Image has no fillCircle).
+    function fillDisc(target: Image, cx: number, cy: number, r: number, c: number) {
+        for (let dy = -r; dy <= r; dy++) {
+            const w = Math.round(Math.sqrt(r * r - dy * dy))
+            target.fillRect(cx - w, cy + dy, 2 * w + 1, 1, c)
+        }
+    }
+    // A pit-crew member: helmet (team red), torso, legs, and a wrench/gun arm
+    // that pumps with `arm` (0/1). Stands facing the car.
+    function drawCrew(target: Image, x: number, y: number, teamCol: number, arm: number) {
+        target.fillRect(x + 1, y, 3, 2, C_RED)        // red team helmet
+        target.fillRect(x + 1, y + 2, 3, 3, 1)        // white torso
+        target.setPixel(x + 2, y + 3, teamCol)        // team-colour badge
+        target.fillRect(x + 1, y + 5, 1, 2, 15)       // legs
+        target.fillRect(x + 3, y + 5, 1, 2, 15)
+        // wheel-gun arm pumping toward the car
+        target.fillRect(x + 4, y + 2 + arm, 2, 1, C_YEL)
+        target.setPixel(x + 6, y + 2 + arm, 15)
     }
 
     function drawRearMirror(target: Image, ox: number, oy: number, vw: number, i: number) {
