@@ -37,6 +37,8 @@ namespace fpSplit {
     let cur = [0, 0, 0, 0]
     let sdisp = [0, 0, 0, 0]
     let plap = [0, 0, 0, 0]
+    let lapTime = [0, 0, 0, 0]      // seconds elapsed on the current lap
+    let bestLap = [0, 0, 0, 0]      // best lap time so far (0 = none yet)
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -77,6 +79,25 @@ namespace fpSplit {
         if (i == 1) return info.player2
         if (i == 2) return info.player3
         return info.player4
+    }
+    // Live race position (1 = leading) for player i, by total distance covered.
+    function placeOf(i: number): number {
+        let p = 1
+        for (let j = 0; j < numPlayers; j++) if (j != i && pos[j] > pos[i]) p++
+        return p
+    }
+    function ordinal(n: number): string {
+        return n == 1 ? "1st" : n == 2 ? "2nd" : n == 3 ? "3rd" : "4th"
+    }
+    // Format seconds as M:SS.t (tenths). Keeps the HUD compact.
+    function fmtTime(t: number): string {
+        if (t <= 0) return "--:--"
+        const total = Math.floor(t * 10)
+        const tenths = total % 10
+        const secs = Math.floor(total / 10) % 60
+        const mins = Math.floor(total / 600)
+        const ss = secs < 10 ? "0" + secs : "" + secs
+        return mins + ":" + ss + "." + tenths
     }
 
     // ---------------------------------------------------------------- F1 sprites
@@ -310,11 +331,7 @@ namespace fpSplit {
                 drawCar(target, cxj, yb, cw, j, frame, ox, ox + vw, oy, bot)
         }
 
-        // lap label
-        const lapNum = Math.min(Math.floor(pos[i] / lapLen) + 1, lapsToWin)
-        target.fillRect(ox + 1, oy + 1, 38, 8, C_PANEL)
-        target.print("P" + (i + 1) + " L" + lapNum, ox + 3, oy + 2, CAR_COLORS[i], image.font5)
-
+        drawHud(target, ox, oy, vw, i)
         drawRearMirror(target, ox, oy, vw, i)
     }
 
@@ -351,6 +368,29 @@ namespace fpSplit {
             const suffix = place == 2 ? "nd" : place == 3 ? "rd" : "th"
             target.print("P" + (winner + 1) + " WON", cx - 16, midY - 8, winCol, image.font5)
             target.print("YOU: " + place + suffix, cx - 17, midY + 1, C_PANEL, image.font5)
+        }
+    }
+
+    // Per-view HUD: lap + live position, a speed bar, and lap/best-lap times.
+    function drawHud(target: Image, ox: number, oy: number, vw: number, i: number) {
+        const col = CAR_COLORS[i]
+        const lapNum = Math.min(Math.floor(pos[i] / lapLen) + 1, lapsToWin)
+        const place = placeOf(i)
+        // line 1: P# L#/total  + ordinal place
+        target.fillRect(ox + 1, oy + 1, 52, 7, C_PANEL)
+        target.print("P" + (i + 1) + " L" + lapNum + "/" + lapsToWin, ox + 2, oy + 1, col, image.font5)
+        target.print(ordinal(place), ox + 38, oy + 1, place == 1 ? C_GRN : 1, image.font5)
+        // line 2: speed bar (fraction of MAX_SPEED), framed
+        const barW = Math.min(52, vw - 4)
+        const sy = oy + 9
+        target.drawRect(ox + 1, sy, barW, 4, C_PANEL)
+        const frac = Math.max(0, Math.min(1, spd[i] / MAX_SPEED))
+        const fillW = Math.round((barW - 2) * frac)
+        if (fillW > 0) target.fillRect(ox + 2, sy + 1, fillW, 2, frac > 0.8 ? C_RED : col)
+        // line 3: current lap time + best (only when room — 2-player full width)
+        if (vw >= 120) {
+            target.print("T " + fmtTime(lapTime[i]), ox + 2, sy + 6, 1, image.font5)
+            target.print("B " + fmtTime(bestLap[i]), ox + 2, sy + 13, C_YEL, image.font5)
         }
     }
 
@@ -404,9 +444,15 @@ namespace fpSplit {
         if (lat[i] > 1.5) lat[i] = 1.5
         if (lat[i] < -1.5) lat[i] = -1.5
 
+        // tick this player's current-lap timer
+        lapTime[i] += dt
+
         const lp = Math.floor(pos[i] / lapLen)
         if (lp > plap[i]) {
             plap[i] = lp
+            // record best lap and start the next lap's timer
+            if (bestLap[i] == 0 || lapTime[i] < bestLap[i]) bestLap[i] = lapTime[i]
+            lapTime[i] = 0
             if (lp >= lapsToWin && !finished) {
                 finished = true
                 winner = i
