@@ -85,12 +85,14 @@ namespace fpSplit {
     let pitProg = [0, 0, 0, 0]      // pit-stop progress 0..1 (button-mash fills it)
     let pitDone = [0, 0, 0, 0]      // laps on which this player has already pitted (bitmask)
     let canPit = [false, false, false, false]  // in the pit zone right now?
+    let pitPenaltyShown = [0, 0, 0, 0]  // seconds left flashing the "+5s" notice
 
     // tyre-wear tuning
     const WEAR_RATE = 0.04           // wear gained per second of racing (visible in a lap or two)
     const WEAR_SLOW = 0.35          // top-speed loss fraction at full wear
     const WEAR_GRIP = 0.4           // grip loss fraction at full wear
     const PIT_TIME = 1.6            // seconds to service tyres in the pit lane
+    const PIT_PENALTY = 5          // +5s time penalty added to your lap when you pit
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -203,7 +205,7 @@ namespace fpSplit {
             spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
             plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
             boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
-            wear[k] = 0; pitting[k] = false; pitProg[k] = 0; pitDone[k] = 0
+            wear[k] = 0; pitting[k] = false; pitProg[k] = 0; pitDone[k] = 0; pitPenaltyShown[k] = 0
         }
         // weather mode: off => always sunny; fixed => chosen; dynamic => starts sunny, rolls each lap
         weather = wxMode == 0 ? WX_SUN : wxMode == 1 ? wxFixed : WX_SUN
@@ -607,10 +609,22 @@ namespace fpSplit {
             const sz = Math.max(2, Math.round(tr * 9))
             if (yI <= oy || yI > bot) continue
             if (it.kind == 1) {
-                // boost token: yellow chevron / diamond
-                for (let r = 0; r < sz; r++) {
-                    const w = sz - r
-                    clipH(target, xI - w, xI + w, yI - sz + r, C_YEL, ox, ox + vw)
+                // boost token drawn as a GAS / fuel pump so it's obviously speed:
+                // a yellow can body, a dark spout/handle, and a red fuel drop.
+                const h = sz * 2, w = Math.max(2, Math.round(sz * 1.1))
+                const topY = yI - h
+                // yellow body
+                for (let yy = 0; yy < h; yy++)
+                    clipH(target, xI - w, xI + w, topY + yy, C_YEL, ox, ox + vw)
+                if (sz >= 4) {
+                    // dark nozzle/handle on the upper-right
+                    clipH(target, xI + w - 1, xI + w + 2, topY + 2, 15, ox, ox + vw)
+                    clipH(target, xI + w + 1, xI + w + 2, topY + 3, 15, ox, ox + vw)
+                    // dark cap on top
+                    clipH(target, xI - 2, xI + 2, topY - 1, 15, ox, ox + vw)
+                    // red fuel drop / 'F' mark in the centre
+                    clipH(target, xI - 1, xI + 1, topY + (h >> 1), C_RED, ox, ox + vw)
+                    target.setPixel(xI, topY + (h >> 1) + 1, C_RED)
                 }
             } else {
                 // oil slick: dark ellipse on the tarmac
@@ -701,56 +715,121 @@ namespace fpSplit {
         }
     }
 
-    // Per-view HUD: lap + live position, a speed bar, and lap/best-lap times.
+    // Per-view HUD: lap header (top-left), labelled S/B/T bars, lap times, and
+    // the live race position in the BOTTOM-RIGHT corner.
     function drawHud(target: Image, ox: number, oy: number, vw: number, i: number) {
         const col = CAR_COLORS[i]
         const lapNum = Math.min(Math.floor(pos[i] / lapLen) + 1, lapsToWin)
         const place = placeOf(i)
-        // line 1: P# L#/total  + ordinal place
-        target.fillRect(ox + 1, oy + 1, 52, 7, C_PANEL)
+        // line 1: P# L#/total
+        target.fillRect(ox + 1, oy + 1, 46, 7, C_PANEL)
         target.print("P" + (i + 1) + " L" + lapNum + "/" + lapsToWin, ox + 2, oy + 1, col, image.font5)
-        target.print(ordinal(place), ox + 38, oy + 1, place == 1 ? C_GRN : 1, image.font5)
-        // line 2: speed bar (fraction of MAX_SPEED), framed
-        const barW = Math.min(52, vw - 4)
+        // labelled bars: S(peed) / B(oost) / T(yres). Labels sit left of each bar.
+        const lblX = ox + 2, barX = ox + 8
+        const barW = Math.min(44, vw - 10)
+        // S = speed
         const sy = oy + 9
-        target.drawRect(ox + 1, sy, barW, 4, C_PANEL)
+        target.print("S", lblX, sy - 1, 1, image.font5)
+        target.drawRect(barX, sy, barW, 4, C_PANEL)
         const frac = Math.max(0, Math.min(1, spd[i] / MAX_SPEED))
         const fillW = Math.round((barW - 2) * frac)
-        if (fillW > 0) target.fillRect(ox + 2, sy + 1, fillW, 2, (boosting[i] || boostFx[i] > 0) ? C_GRN : frac > 0.8 ? C_RED : col)
-        // boost gauge just under the speed bar (green = ready, dims as it drains)
+        if (fillW > 0) target.fillRect(barX + 1, sy + 1, fillW, 2, (boosting[i] || boostFx[i] > 0) ? C_GRN : frac > 0.8 ? C_RED : col)
+        // B = boost
         const by = sy + 5
-        target.drawRect(ox + 1, by, barW, 3, C_PANEL)
+        target.print("B", lblX, by - 1, 1, image.font5)
+        target.drawRect(barX, by, barW, 3, C_PANEL)
         const bfrac = Math.max(0, Math.min(1, boost[i] / BOOST_MAX))
         const bw = Math.round((barW - 2) * bfrac)
-        if (bw > 0) target.fillRect(ox + 2, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
-        // tyre-wear gauge (only when pit stops are enabled): green->red as worn
+        if (bw > 0) target.fillRect(barX + 1, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
+        // T = tyres (only when pit stops enabled)
+        let nextY = by + 4
         if (pitMode > 0) {
             const wy = by + 4
-            target.drawRect(ox + 1, wy, barW, 3, C_PANEL)
-            const ww = Math.round((barW - 2) * (1 - wear[i]))   // remaining tyre life
+            target.print("T", lblX, wy - 1, 1, image.font5)
+            target.drawRect(barX, wy, barW, 3, C_PANEL)
+            const ww = Math.round((barW - 2) * (1 - wear[i]))
             const wcol = wear[i] > 0.7 ? C_RED : wear[i] > 0.4 ? C_YEL : C_GRN
-            if (ww > 0) target.fillRect(ox + 2, wy + 1, ww, 1, wcol)
+            if (ww > 0) target.fillRect(barX + 1, wy + 1, ww, 1, wcol)
+            nextY = wy + 4
         }
-        // line 3: current lap time + best (only when room — 2-player full width)
+        // lap times (only on full-width 2-player views)
         if (vw >= 120) {
-            const ty = pitMode > 0 ? sy + 14 : sy + 10
-            target.print("T " + fmtTime(lapTime[i]), ox + 2, ty, 1, image.font5)
-            target.print("B " + fmtTime(bestLap[i]), ox + 2, ty + 7, C_YEL, image.font5)
+            target.print("T " + fmtTime(lapTime[i]), ox + 2, nextY, 1, image.font5)
+            target.print("B " + fmtTime(bestLap[i]), ox + 2, nextY + 7, C_YEL, image.font5)
         }
+        // PLACE indicator in the BOTTOM-RIGHT corner of this panel (panels are
+        // 60px tall in both 2P and 4P layouts).
+        const ord = ordinal(place)
+        const pcol = place == 1 ? C_YEL : 1
+        const pw = ord.length * 4 + 4
+        const px = ox + vw - pw - 1, py = oy + 60 - 9
+        target.fillRect(px, py, pw, 8, 0)
+        target.drawRect(px, py, pw, 8, pcol)
+        target.print(ord, px + 2, py + 1, pcol, image.font5)
     }
 
-    // Pit-stop overlay: shown while servicing in the pit lane (timed auto-stop).
+    // Animated pit-stop scene: the car in the box, a jack lifting it, and two
+    // crew on each side changing the wheels (wheels pop off, new ones on), then
+    // the car drops. Driven by pitProg (0..1) for the stages + clock for motion.
     function drawPit(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
         const cx = ox + (vw >> 1), cy = oy + (vh >> 1)
-        target.fillRect(ox + 6, cy - 14, vw - 12, 28, 0)
-        target.drawRect(ox + 6, cy - 14, vw - 12, 28, C_YEL)
-        target.print("IN THE PITS", cx - 22, cy - 11, C_YEL, image.font5)
-        target.print("NEW TYRES...", cx - 22, cy - 2, 1, image.font5)
-        // service progress bar
+        // backdrop pit-garage box
+        target.fillRect(ox + 4, oy + 4, vw - 8, vh - 8, 0)
+        target.drawRect(ox + 4, oy + 4, vw - 8, vh - 8, C_YEL)
+        target.print("PIT STOP", cx - 16, oy + 6, C_YEL, image.font5)
+
+        const p = Math.min(1, pitProg[i])
+        const col = CAR_COLORS[i]
+        const wig = (Math.floor(clock * 18) & 1)        // fast wrench wiggle
+        // stages: 0-.25 jack up, .25-.7 wheels off & on, .7-1 drop & done
+        const lifted = p > 0.2 && p < 0.85
+        const carY = cy - (lifted ? 5 : 1)              // car rises when jacked
+
+        // CAR body (top-down, player colour) centred
+        target.fillRect(cx - 7, carY - 3, 14, 9, col)
+        target.fillRect(cx - 3, carY - 6, 6, 4, col)     // nose
+        target.fillRect(cx - 2, carY, 4, 3, 1)           // cockpit
+        // jack under the car (a wedge) while lifted
+        if (lifted) {
+            target.fillRect(cx - 1, carY + 6, 2, 4, 15)
+            clipH(target, cx - 3, cx + 3, carY + 10, 15, ox, ox + vw)
+        }
+
+        // WHEELS: during the swap stage they blink off; otherwise solid black
+        const swapping = p > 0.25 && p < 0.7
+        const showWheel = !(swapping && wig)
+        const wheelCol = swapping && !wig ? C_RED : 15   // new wheel flashes red briefly
+        if (showWheel) {
+            const wxL = cx - 9, wxR = cx + 7
+            target.fillRect(wxL, carY - 2, 3, 3, wheelCol)
+            target.fillRect(wxL, carY + 3, 3, 3, wheelCol)
+            target.fillRect(wxR, carY - 2, 3, 3, wheelCol)
+            target.fillRect(wxR, carY + 3, 3, 3, wheelCol)
+        }
+
+        // CREW: a figure each side working the wheels (arms wiggle while swapping)
+        drawCrew(target, cx - 16, carY - 1, swapping ? wig : 0)
+        drawCrew(target, cx + 13, carY - 1, swapping ? (1 - wig) : 0)
+        // a stack of fresh tyres to the side
+        target.fillRect(ox + 8, cy + 4, 5, 2, 15)
+        target.fillRect(ox + 8, cy + 6, 5, 2, 15)
+
+        // service progress bar at the bottom
         const bw = vw - 24
-        target.drawRect(ox + 12, cy + 6, bw, 5, C_PANEL)
-        const fw = Math.round((bw - 2) * Math.min(1, pitProg[i]))
-        if (fw > 0) target.fillRect(ox + 13, cy + 7, fw, 3, C_GRN)
+        target.drawRect(ox + 12, oy + vh - 9, bw, 4, C_PANEL)
+        const fw = Math.round((bw - 2) * p)
+        if (fw > 0) target.fillRect(ox + 13, oy + vh - 8, fw, 2, C_GRN)
+        // "+5s" penalty notice
+        target.print("+5s", cx - 5, oy + 13, C_RED, image.font5)
+    }
+    // A tiny pit-crew member; `arm` (0/1) animates the wrench arm up/down.
+    function drawCrew(target: Image, x: number, y: number, arm: number) {
+        target.fillRect(x + 1, y, 3, 2, 8)        // blue cap/helmet
+        target.fillRect(x + 1, y + 2, 3, 4, 6)    // green overalls
+        target.fillRect(x + 1, y + 6, 1, 2, 15)   // legs
+        target.fillRect(x + 3, y + 6, 1, 2, 15)
+        // wrench arm reaches toward the car, wiggling
+        target.fillRect(x + 4, y + 2 + arm, 2, 1, 15)
     }
 
     function drawRearMirror(target: Image, ox: number, oy: number, vw: number, i: number) {
@@ -823,16 +902,18 @@ namespace fpSplit {
             const inZone = Math.abs(lapPos - pitD) < 24
             const notPittedThisLap = !(pitDone[i] & (1 << (curLap & 7)))
             canPit[i] = inZone && notPittedThisLap
-            // entry: AUTO pits when tyres are worn; MANUAL pits when you steer
-            // fully right into the pit lane (or CPU steers in when worn).
+            // entry: AUTO only pits when tyres are heavily worn (so it doesn't pit
+            // every lap); MANUAL pits when you steer fully right into the lane.
             let enter = false
             if (notPittedThisLap && inZone) {
-                if (pitMode == 1) enter = wear[i] > 0.55          // AUTO
-                else enter = isCPU[i] ? wear[i] > 0.6 : lat[i] > 0.7   // MANUAL: steer right
+                if (pitMode == 1) enter = wear[i] > 0.8           // AUTO: only when really worn
+                else enter = isCPU[i] ? wear[i] > 0.8 : lat[i] > 0.7   // MANUAL: steer right
             }
             if (enter) {
                 pitting[i] = true; pitProg[i] = 0
                 pitDone[i] |= (1 << (curLap & 7))
+                lapTime[i] += PIT_PENALTY               // pitting costs time (strategy)
+                pitPenaltyShown[i] = 1.8                // flash the "+5s" notice
                 return
             }
         } else {
