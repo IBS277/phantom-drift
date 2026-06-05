@@ -36,6 +36,7 @@ namespace fpSplit {
     let weather = WX_SUN
     let wxAnnounce = 0               // seconds left showing the "weather changed" banner
     let wxLastLap = -1              // leader lap at last weather roll
+    let clock = 0                   // wall-clock seconds, ticks every frame (for rain etc.)
 
     // ---- boost (Phase 2) ----
     const BOOST_SPEED = 96            // top speed while boosting (vs MAX_SPEED 64)
@@ -197,7 +198,7 @@ namespace fpSplit {
         pitD = Math.floor(lapLen * 0.85)   // pit zone near the end of the lap
         for (let k = 0; k < 4; k++) {
             isCPU[k] = k >= numPlayers && k < numPlayers + cpuCount
-            pos[k] = -k * 3
+            pos[k] = 0                        // all start on the line (can't reverse behind it)
             spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
             plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
             boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
@@ -623,10 +624,11 @@ namespace fpSplit {
             }
         }
 
-        // rain drops streaking down when it's raining (diagonal white streaks)
+        // rain drops streaking down when it's raining (diagonal white streaks).
+        // Driven by the wall clock so it keeps falling even when the car is still.
         if (weather == WX_RAIN) {
-            const rt = Math.floor(pos[i] * 8)
-            for (let s = 0; s < 14; s++) {
+            const rt = Math.floor(clock * 40)
+            for (let s = 0; s < 16; s++) {
                 const rx = ox + ((s * 23 + rt * 2) % vw)
                 const ry = oy + ((s * 17 + rt * 6) % (vh - 3))
                 target.setPixel(rx, ry, 1)
@@ -836,6 +838,8 @@ namespace fpSplit {
 
         cur[i] += (curveAt(pos[i] + 40) - cur[i]) * Math.min(1, dt * 2.5)
         pos[i] += spd[i] * dt
+        // can't reverse past the start line — clamp to the grid so laps never go negative
+        if (pos[i] < 0) { pos[i] = 0; if (spd[i] < 0) spd[i] = 0 }
         // grip = weather grip, further reduced by tyre wear when pit stops are on
         const grip = wxGrip() * (pitOn ? (1 - WEAR_GRIP * wear[i]) : 1)
         const mf = (Math.abs(spd[i]) > 2 ? 1 : 0.6) * grip
@@ -1027,6 +1031,7 @@ namespace fpSplit {
 
         game.onUpdate(function () {
             const dt = game.eventContext().deltaTime
+            clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
             if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
                 lightsT += dt
