@@ -83,9 +83,10 @@ namespace fpSplit {
     let pitting = [false, false, false, false]  // currently in a pit stop?
     let pitProg = [0, 0, 0, 0]      // pit-stop progress 0..1 (button-mash fills it)
     let pitDone = [0, 0, 0, 0]      // laps on which this player has already pitted (bitmask)
+    let canPit = [false, false, false, false]  // in the pit zone right now?
 
     // tyre-wear tuning
-    const WEAR_RATE = 0.018          // wear gained per second of racing
+    const WEAR_RATE = 0.04           // wear gained per second of racing (visible in a lap or two)
     const WEAR_SLOW = 0.35          // top-speed loss fraction at full wear
     const WEAR_GRIP = 0.4           // grip loss fraction at full wear
     const PIT_MASH = 0.12           // pit progress per A press (≈9 presses)
@@ -792,14 +793,19 @@ namespace fpSplit {
         if (pitOn) {
             const lapPos = ((pos[i] % lapLen) + lapLen) % lapLen
             const curLap = Math.floor(pos[i] / lapLen)
-            const inZone = Math.abs(lapPos - pitD) < 8 && Math.abs(lat[i]) > 0.45
+            // wide, forgiving zone — anywhere across the road counts
+            const inZone = Math.abs(lapPos - pitD) < 22
             const notPittedThisLap = !(pitDone[i] & (1 << (curLap & 7)))
-            const wantPit = isCPU[i] ? (wear[i] > 0.7) : ctrlFor(i).A.isPressed()
-            if (inZone && wantPit && notPittedThisLap && wear[i] > 0.2) {
+            const wantPit = isCPU[i] ? (wear[i] > 0.6) : ctrlFor(i).A.isPressed()
+            // store whether this player CAN pit right now (for the on-screen prompt)
+            canPit[i] = inZone && notPittedThisLap
+            if (inZone && wantPit && notPittedThisLap) {
                 pitting[i] = true; pitProg[i] = 0
                 pitDone[i] |= (1 << (curLap & 7))
                 return
             }
+        } else {
+            canPit[i] = false
         }
 
         // --- boost ---
@@ -1000,6 +1006,14 @@ namespace fpSplit {
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
                 if (phase == PH_RACE && pitting[i]) drawPit(target, ox, oy, vw, vh, i)
+                else if (phase == PH_RACE && pitOn && canPit[i] && !isCPU[i]) {
+                    // flashing prompt when this player can pit
+                    if ((Math.floor(pos[i] * 3) & 1) == 0) {
+                        const px = ox + (vw >> 1) - 30, py = oy + vh - 16
+                        target.fillRect(px, py, 62, 9, 0)
+                        target.print("PRESS A: PIT", px + 2, py + 1, C_GRN, image.font5)
+                    }
+                }
             }
             target.fillRect(0, 59, 160, 2, 15)
             if (numPlayers > 2) target.fillRect(79, 0, 2, 120, 15)
