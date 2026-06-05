@@ -95,9 +95,11 @@ namespace fpSplit {
     // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
     // run(); 1-3 are presets. selTrack picks one on the select screen.
     const TRACK_NAMES = ["CUSTOM", "MONACO", "OVAL", "TWISTY"]
+    // MONACO: a tight street-circuit feel (hairpins + chicanes).
+    const TRACK_MONACO = [0, 0, 0.5, 0.4, 0, 0, -0.6, -0.5, 0.5, 1.5, 1.7, 0.5, 0, -0.3, 0.8, -0.8, -0.6, 0.6, 1.0, 0.5, 0, 0]
     const TRACK_OVAL = [0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0]
     const TRACK_TWISTY = [0, 0.9, -0.9, 0.8, -1.1, 1.2, -0.7, 0.6, -1.3, 1.0, -0.8, 0.5, -0.6, 1.1, -1.0, 0, 0]
-    let hostCurve = [0]              // the curve passed into run()
+    let hostCurve = [0]              // the curve passed into run() (= CUSTOM)
     let selTrack = 1                // default to MONACO on the picker
     let cpuCount = 0                // extra AI cars beyond human players (set on select)
 
@@ -175,7 +177,9 @@ namespace fpSplit {
     // Apply chosen settings and start the lights. Namespace-level (not nested in
     // run) so MakeCode reliably binds it from the A-button handler.
     function startRace() {
-        const chosen = selTrack <= 1 ? hostCurve : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
+        // CUSTOM = the curve the host passed to run(); others are presets.
+        const chosen = selTrack == 0 ? hostCurve : selTrack == 1 ? TRACK_MONACO
+            : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
         setTrack(chosen, segLen)
         buildItems()
         for (let k = 0; k < 4; k++) {
@@ -196,30 +200,33 @@ namespace fpSplit {
     function menuLine(target: Image, row: number, y: number, label: string, value: string) {
         const active = menuRow == row
         if (active) {
-            target.fillRect(8, y - 1, 144, 9, 1)
-            target.print(">", 10, y, C_GRN, image.font5)
+            target.fillRect(6, y - 1, 148, 9, 1)        // white highlight bar
+            target.print(">", 8, y, 2, image.font5)      // red cursor on white
         }
-        const fg = active ? C_GRN : C_PANEL
-        target.print(label, 18, y, fg, image.font5)
-        target.print(value, 96, y, active ? C_YEL : 1, image.font5)
+        // inactive labels are WHITE on the black panel (were black = invisible);
+        // active labels are black on the white highlight bar.
+        const labCol = active ? 15 : 1
+        const valCol = active ? 2 : C_YEL
+        target.print(label, 16, y, labCol, image.font5)
+        target.print(value, 96, y, valCol, image.font5)
     }
     function drawMenu(target: Image) {
         target.fill(C_SKY)
         target.fillRect(2, 2, 156, 116, 0)
-        target.print("F1 SPLIT-SCREEN RACE", 24, 5, C_YEL, image.font5)
-        const wxLabel = wxMode == 1 ? WXMODE_NAMES[1] + ":" + WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
-        menuLine(target, 0, 16, "PLAYERS", "" + numPlayers)
-        menuLine(target, 1, 26, "TRACK", TRACK_NAMES[selTrack])
-        menuLine(target, 2, 36, "CPU CARS", "" + cpuCount)
-        menuLine(target, 3, 46, "LAPS", "" + lapsToWin)
-        menuLine(target, 4, 56, "PIT STOPS", pitOn ? "ON" : "OFF")
-        menuLine(target, 5, 66, "DIFFICULTY", DIFF_NAMES[difficulty])
-        menuLine(target, 6, 76, "WEATHER", wxLabel)
+        target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
+        const wxLabel = wxMode == 1 ? WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
+        menuLine(target, 0, 15, "PLAYERS", "" + numPlayers)
+        menuLine(target, 1, 25, "TRACK", TRACK_NAMES[selTrack])
+        menuLine(target, 2, 35, "CPU CARS", "" + cpuCount)
+        menuLine(target, 3, 45, "LAPS", "" + lapsToWin)
+        menuLine(target, 4, 55, "PIT STOPS", pitOn ? "ON" : "OFF")
+        menuLine(target, 5, 65, "DIFFICULTY", DIFF_NAMES[difficulty])
+        menuLine(target, 6, 75, "WEATHER", wxLabel)
         // START row
         const startActive = menuRow == 7
-        target.fillRect(50, 90, 60, 12, startActive ? C_GRN : C_PANEL)
-        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
-        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 6, 108, 13, image.font5)
+        target.fillRect(50, 88, 60, 11, startActive ? 6 : C_PANEL)
+        target.print("> START <", 56, 91, startActive ? 0 : 1, image.font5)
+        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 8, 110, 1, image.font5)
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
