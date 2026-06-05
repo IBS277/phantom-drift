@@ -23,8 +23,31 @@ namespace fpSplit {
 
     // ---- physics ----
     const MAX_SPEED = 64, ACCEL = 42, BRAKE = 80, ENGINE_BRAKE = 16, OFF_MAX = 24
-    const STEER = 2.0, CENTRI = 2.4
+    // STEER: how fast steering moves you sideways. CENTRI: outward pull in bends
+    // (lowered for a smoother, less-floaty feel). STEER_EASE: how quickly the
+    // visual steering angle follows the stick (for the lean / front-wheel feel).
+    const STEER = 2.3, CENTRI = 1.6, STEER_EASE = 6
     const SEE = 240                      // metres of road visible ahead
+
+    // ---- boost (Phase 2) ----
+    const BOOST_SPEED = 96            // top speed while boosting (vs MAX_SPEED 64)
+    const BOOST_MAX = 1.4            // seconds of boost when full
+    const BOOST_REGEN = 0.35        // boost charge regained per second
+    const BOOST_USE = 1.0           // boost charge spent per second while boosting
+
+    // ---- items on the track (Phase 3) ----
+    // Each item: {d: distance along the lap, x: lateral -1..1, kind: 0=oil 1=boost,
+    // taken: per-player bitmask of who has consumed it this lap}.
+    class TrackItem {
+        d: number
+        x: number
+        kind: number
+        taken: number
+        constructor(d: number, x: number, kind: number) {
+            this.d = d; this.x = x; this.kind = kind; this.taken = 0
+        }
+    }
+    let items: TrackItem[] = []
 
     // ---- track (set via run / setTrack) ----
     let trackCurve = [0]
@@ -41,6 +64,12 @@ namespace fpSplit {
     let plap = [0, 0, 0, 0]
     let lapTime = [0, 0, 0, 0]      // seconds elapsed on the current lap
     let bestLap = [0, 0, 0, 0]      // best lap time so far (0 = none yet)
+    let steerAng = [0, 0, 0, 0]     // eased steering angle (-1..1) for visual lean
+    let boost = [BOOST_MAX, BOOST_MAX, BOOST_MAX, BOOST_MAX]  // boost charge left
+    let boosting = [false, false, false, false]
+    let spinT = [0, 0, 0, 0]        // seconds left spinning out (hazard hit)
+    let isCPU = [false, false, false, false]  // AI-controlled car?
+    let boostFx = [0, 0, 0, 0]      // pickup speed-bonus timer (seconds)
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -51,6 +80,16 @@ namespace fpSplit {
     let winner = -1
     let started = false
     let finishHandler: (winnerIndex: number) => void = null
+
+    // ---- track select (Phase 4) ----
+    // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
+    // run(); 1-3 are presets. selTrack picks one on the select screen.
+    const TRACK_NAMES = ["CUSTOM", "MONACO", "OVAL", "TWISTY"]
+    const TRACK_OVAL = [0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0]
+    const TRACK_TWISTY = [0, 0.9, -0.9, 0.8, -1.1, 1.2, -0.7, 0.6, -1.3, 1.0, -0.8, 0.5, -0.6, 1.1, -1.0, 0, 0]
+    let hostCurve = [0]              // the curve passed into run()
+    let selTrack = 1                // default to MONACO on the picker
+    let cpuCount = 0                // extra AI cars beyond human players (set on select)
 
     // ---------------------------------------------------------------- helpers
     function bandOf(v: number): number {
@@ -82,14 +121,29 @@ namespace fpSplit {
         if (i == 2) return info.player3
         return info.player4
     }
+    // Total cars on track = human players + CPU rivals.
+    function carCount(): number { return numPlayers + cpuCount }
     // Live race position (1 = leading) for player i, by total distance covered.
     function placeOf(i: number): number {
         let p = 1
-        for (let j = 0; j < numPlayers; j++) if (j != i && pos[j] > pos[i]) p++
+        for (let j = 0; j < carCount(); j++) if (j != i && pos[j] > pos[i]) p++
         return p
     }
     function ordinal(n: number): string {
         return n == 1 ? "1st" : n == 2 ? "2nd" : n == 3 ? "3rd" : "4th"
+    }
+    // Scatter items along the lap: alternating boost tokens and oil slicks at a
+    // few positions and lateral offsets. Deterministic (no RNG) for fair races.
+    function buildItems() {
+        items = []
+        const n = Math.max(4, Math.floor(lapLen / 220))
+        for (let k = 0; k < n; k++) {
+            const d = Math.floor((k + 0.5) * lapLen / n)
+            const kind = k % 2            // alternate boost / oil
+            // weave the lateral position so players must steer for them
+            const x = ((k % 3) - 1) * 0.55
+            items.push(new TrackItem(d, x, kind))
+        }
     }
     // Format seconds as M:SS.t (tenths). Keeps the HUD compact.
     function fmtTime(t: number): string {
@@ -294,12 +348,15 @@ namespace fpSplit {
         const bot = oy + vh
         const hw = vw * 0.42
         const bendScale = vw * 0.5
+        // visual lean: when steering, slide the whole road sideways a touch so
+        // the turn reads as the car leaning into it (first-person "wheels turn").
+        const lean = steerAng[i] * vw * 0.06
         target.fillRect(ox, oy, vw, hor - oy, C_SKY)
 
         for (let y = hor; y < bot; y++) {
             const t = (y - hor) / (bot - hor)
             const roadW = t * hw
-            const cx = ox + (vw >> 1) + cur[i] * (1 - t) * (1 - t) * bendScale - lat[i] * roadW
+            const cx = ox + (vw >> 1) + cur[i] * (1 - t) * (1 - t) * bendScale - lat[i] * roadW - lean * t
             const band = bandOf(pos[i] * 0.05 + (1 - t) * 11)
             const road = band ? C_ROAD_D : C_ROAD_L
             const rumble = band ? C_RUMBLE_A : C_RUMBLE_B
@@ -310,8 +367,8 @@ namespace fpSplit {
             if (band == 0 && roadW > 4) clipH(target, cx - 1, cx + 1, y, C_LINE, ox, ox + vw)
         }
 
-        // the other players, as cars by relative track position
-        for (let j = 0; j < numPlayers; j++) {
+        // the other cars (players + CPU) by relative track position
+        for (let j = 0; j < carCount(); j++) {
             if (j == i) continue
             let dA = (pos[j] - pos[i]) % lapLen
             if (dA < 0) dA += lapLen
@@ -323,7 +380,7 @@ namespace fpSplit {
             const roadY = hor + tr * (bot - hor)
             const yb = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
             const rwid = tr * hw
-            const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid + lat[j] * rwid)
+            const cxj = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid - lean * tr + lat[j] * rwid + steerAng[j] * rwid * 0.25)
             const cw = Math.max(4, Math.round(tr * hw * 1.05))
             // wheel-spin frame from the car's own distance travelled, so the
             // tyres cycle as it moves (faster car => pos advances faster => the
@@ -331,6 +388,43 @@ namespace fpSplit {
             const frame = Math.floor(pos[j] * 0.6) & 1
             if (cxj + (cw >> 1) > ox && cxj - (cw >> 1) < ox + vw && yb > oy && yb <= bot)
                 drawCar(target, cxj, yb, cw, j, frame, ox, ox + vw, oy, bot)
+        }
+
+        // items (oil slicks + boost tokens) projected onto the road ahead
+        const myLap = ((pos[i] % lapLen) + lapLen) % lapLen
+        for (const it of items) {
+            if (it.taken & (1 << i)) continue
+            let dI = it.d - myLap
+            if (dI < 0) dI += lapLen
+            if (dI <= 2 || dI >= SEE) continue
+            const tr = 1 - dI / SEE
+            const roadY = hor + tr * (bot - hor)
+            const yI = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
+            const rwid = tr * hw
+            const xI = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid - lean * tr + it.x * rwid)
+            const sz = Math.max(2, Math.round(tr * 9))
+            if (yI <= oy || yI > bot) continue
+            if (it.kind == 1) {
+                // boost token: yellow chevron / diamond
+                for (let r = 0; r < sz; r++) {
+                    const w = sz - r
+                    clipH(target, xI - w, xI + w, yI - sz + r, C_YEL, ox, ox + vw)
+                }
+            } else {
+                // oil slick: dark ellipse on the tarmac
+                for (let r = 0; r < (sz >> 1) + 1; r++)
+                    clipH(target, xI - sz + r, xI + sz - r, yI - r, 15, ox, ox + vw)
+            }
+        }
+
+        // boost speed-lines: streaks from the edges when this car is boosting
+        if (boosting[i] || boostFx[i] > 0) {
+            const t6 = Math.floor(pos[i] * 2) & 7
+            for (let s = 0; s < 4; s++) {
+                const yy = oy + 6 + ((s * 13 + t6) % (vh - 8))
+                clipH(target, ox + 1, ox + 6, yy, 1, ox, ox + vw)
+                clipH(target, ox + vw - 6, ox + vw - 1, yy, 1, ox, ox + vw)
+            }
         }
 
         drawHud(target, ox, oy, vw, i)
@@ -366,7 +460,7 @@ namespace fpSplit {
         } else {
             // loser panel: name the winner + this player's finishing place
             let place = 1
-            for (let j = 0; j < numPlayers; j++) if (j != i && pos[j] > pos[i]) place++
+            for (let j = 0; j < carCount(); j++) if (j != i && pos[j] > pos[i]) place++
             const suffix = place == 2 ? "nd" : place == 3 ? "rd" : "th"
             target.print("P" + (winner + 1) + " WON", cx - 16, midY - 8, winCol, image.font5)
             target.print("YOU: " + place + suffix, cx - 17, midY + 1, C_PANEL, image.font5)
@@ -388,11 +482,17 @@ namespace fpSplit {
         target.drawRect(ox + 1, sy, barW, 4, C_PANEL)
         const frac = Math.max(0, Math.min(1, spd[i] / MAX_SPEED))
         const fillW = Math.round((barW - 2) * frac)
-        if (fillW > 0) target.fillRect(ox + 2, sy + 1, fillW, 2, frac > 0.8 ? C_RED : col)
+        if (fillW > 0) target.fillRect(ox + 2, sy + 1, fillW, 2, (boosting[i] || boostFx[i] > 0) ? C_GRN : frac > 0.8 ? C_RED : col)
+        // boost gauge just under the speed bar (green = ready, dims as it drains)
+        const by = sy + 5
+        target.drawRect(ox + 1, by, barW, 3, C_PANEL)
+        const bfrac = Math.max(0, Math.min(1, boost[i] / BOOST_MAX))
+        const bw = Math.round((barW - 2) * bfrac)
+        if (bw > 0) target.fillRect(ox + 2, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
         // line 3: current lap time + best (only when room — 2-player full width)
         if (vw >= 120) {
-            target.print("T " + fmtTime(lapTime[i]), ox + 2, sy + 6, 1, image.font5)
-            target.print("B " + fmtTime(bestLap[i]), ox + 2, sy + 13, C_YEL, image.font5)
+            target.print("T " + fmtTime(lapTime[i]), ox + 2, sy + 10, 1, image.font5)
+            target.print("B " + fmtTime(bestLap[i]), ox + 2, sy + 17, C_YEL, image.font5)
         }
     }
 
@@ -402,7 +502,7 @@ namespace fpSplit {
         target.fillRect(mx - 1, my - 1, mw + 2, mh + 2, 15)
         target.fillRect(mx, my, mw, mh, C_SKY)
         target.fillRect(mx, my + (mh >> 1), mw, mh - (mh >> 1), C_ROAD_L)
-        for (let j = 0; j < numPlayers; j++) {
+        for (let j = 0; j < carCount(); j++) {
             if (j == i) continue
             let dB = (pos[i] - pos[j]) % lapLen
             if (dB < 0) dB += lapLen
@@ -422,21 +522,52 @@ namespace fpSplit {
 
     // ---------------------------------------------------------------- driving
     function drive(i: number, dt: number) {
-        if (ctrlFor(i).up.isPressed()) spd[i] += ACCEL * dt
-        else if (ctrlFor(i).down.isPressed()) spd[i] -= BRAKE * dt
+        // resolve control inputs (human reads buttons; CPU is steered by AI)
+        let accel = false, brake = false, st = 0, wantBoost = false
+        if (isCPU[i]) {
+            aiInputs(i)
+            accel = aiAccel; brake = aiBrake; st = aiSteer; wantBoost = aiBoost
+        } else {
+            accel = ctrlFor(i).up.isPressed()
+            brake = ctrlFor(i).down.isPressed()
+            if (ctrlFor(i).left.isPressed()) st = -1
+            else if (ctrlFor(i).right.isPressed()) st = 1
+            // hold B to boost while charge remains
+            wantBoost = ctrlFor(i).B.isPressed()
+        }
+
+        // spinning out from an oil slick: lose control briefly
+        if (spinT[i] > 0) {
+            spinT[i] -= dt
+            spd[i] = Math.max(0, spd[i] - spd[i] * 2 * dt)
+            steerAng[i] += (1.5 - steerAng[i]) * dt * 10   // visibly slew the wheel
+            pos[i] += spd[i] * dt
+            return
+        }
+
+        // --- boost ---
+        boosting[i] = wantBoost && boost[i] > 0
+        if (boosting[i]) boost[i] = Math.max(0, boost[i] - BOOST_USE * dt)
+        else boost[i] = Math.min(BOOST_MAX, boost[i] + BOOST_REGEN * dt)
+        if (boostFx[i] > 0) boostFx[i] -= dt   // pickup bonus decays
+        const topSpeed = (boosting[i] || boostFx[i] > 0) ? BOOST_SPEED : MAX_SPEED
+
+        // --- throttle / brake ---
+        if (accel) spd[i] += ACCEL * dt
+        else if (brake) spd[i] -= BRAKE * dt
         else {
             if (spd[i] > 0) spd[i] = Math.max(0, spd[i] - ENGINE_BRAKE * dt)
             else if (spd[i] < 0) spd[i] = Math.min(0, spd[i] + ENGINE_BRAKE * dt)
         }
+        if (boosting[i] || boostFx[i] > 0) spd[i] += ACCEL * 0.8 * dt  // boost shove
         const off = Math.abs(lat[i]) > 1
         if (off) { spd[i] -= spd[i] * 1.1 * dt; if (spd[i] > OFF_MAX) spd[i] = OFF_MAX }
-        if (spd[i] > MAX_SPEED) spd[i] = MAX_SPEED
+        if (spd[i] > topSpeed) spd[i] = topSpeed
         if (spd[i] < -MAX_SPEED * 0.3) spd[i] = -MAX_SPEED * 0.3
 
-        let st = 0
-        if (ctrlFor(i).left.isPressed()) st = -1
-        else if (ctrlFor(i).right.isPressed()) st = 1
+        // --- steering (eased, drives both motion and the visual lean) ---
         sdisp[i] += (st - sdisp[i]) * Math.min(1, dt * 8)
+        steerAng[i] += (sdisp[i] - steerAng[i]) * Math.min(1, dt * STEER_EASE)
 
         cur[i] += (curveAt(pos[i] + 40) - cur[i]) * Math.min(1, dt * 2.5)
         pos[i] += spd[i] * dt
@@ -446,12 +577,15 @@ namespace fpSplit {
         if (lat[i] > 1.5) lat[i] = 1.5
         if (lat[i] < -1.5) lat[i] = -1.5
 
+        checkItems(i)
+
         // tick this player's current-lap timer
         lapTime[i] += dt
 
         const lp = Math.floor(pos[i] / lapLen)
         if (lp > plap[i]) {
             plap[i] = lp
+            for (const it of items) it.taken &= ~(1 << i)   // items respawn each lap
             // record best lap and start the next lap's timer
             if (bestLap[i] == 0 || lapTime[i] < bestLap[i]) bestLap[i] = lapTime[i]
             lapTime[i] = 0
@@ -462,6 +596,36 @@ namespace fpSplit {
                 if (finishHandler) finishHandler(winner)
             }
         }
+    }
+
+    // --- Phase 3: items (oil slicks slow/spin you; boost tokens speed you up) ---
+    function checkItems(i: number) {
+        const lapPos = ((pos[i] % lapLen) + lapLen) % lapLen
+        for (const it of items) {
+            if (it.taken & (1 << i)) continue
+            if (Math.abs(lapPos - it.d) < 6 && Math.abs(lat[i] - it.x) < 0.35) {
+                it.taken |= (1 << i)
+                if (it.kind == 1) { boostFx[i] = 1.2 }        // boost token
+                else { spinT[i] = 0.8 }                       // oil slick → spin out
+            }
+        }
+    }
+
+    // --- Phase 4: simple AI. Steers toward the road centre, anticipates the
+    // upcoming curve, throttles full and boosts on straights. Sets the shared
+    // aiAccel/aiBrake/aiSteer/aiBoost for the current car. ---
+    let aiAccel = false, aiBrake = false, aiSteer = 0, aiBoost = false
+    function aiInputs(i: number) {
+        const bend = curveAt(pos[i] + 50)
+        // aim lateral target slightly into the apex; steer to reduce error
+        const targetLat = bend * 0.4
+        const err = targetLat - lat[i]
+        aiSteer = err > 0.08 ? 1 : err < -0.08 ? -1 : 0
+        // ease off on very sharp bends, otherwise full throttle
+        aiBrake = false
+        aiAccel = true
+        if (Math.abs(bend) > 1.1 && spd[i] > MAX_SPEED * 0.8) aiAccel = false
+        aiBoost = Math.abs(bend) < 0.3 && boost[i] > BOOST_MAX * 0.5
     }
 
     // ---------------------------------------------------------------- public API
@@ -500,6 +664,26 @@ namespace fpSplit {
         setLaps(laps)
         if (started) return
         started = true
+        if (curve && curve.length > 1) hostCurve = curve
+
+        // Apply the chosen track + CPU rivals and start the lights. Called when
+        // the host confirms on the select screen.
+        function startRace() {
+            const chosen = selTrack == 0 ? hostCurve : selTrack == 1 ? hostCurve
+                : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
+            // (MONACO reuses the host's Monaco-flavoured curve)
+            setTrack(chosen, segmentLength)
+            buildItems()
+            // seed CPU cars after the human players, spaced behind the line
+            for (let k = 0; k < 4; k++) {
+                isCPU[k] = k >= numPlayers && k < numPlayers + cpuCount
+                pos[k] = -k * 3
+                spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
+                plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
+                boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
+            }
+            phase = PH_LIGHTS; lightsT = 0
+        }
 
         // Enable MakeCode's online multiplayer hosting: referencing a
         // parts="multiplayer" method (onButtonEvent) on players 2-4 in reachable
@@ -519,19 +703,35 @@ namespace fpSplit {
         controller.player1.down.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) numPlayers = Math.max(2, numPlayers - 1)
         })
+        // LEFT/RIGHT cycle the track on the select screen
+        controller.player1.left.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_SELECT) selTrack = (selTrack + 3) % 4
+        })
+        controller.player1.right.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_SELECT) selTrack = (selTrack + 1) % 4
+        })
+        // B toggles how many CPU rivals fill the grid (0..up to 4-humans)
+        controller.player1.B.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_SELECT) cpuCount = (cpuCount + 1) % (4 - numPlayers + 1)
+        })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) { phase = PH_LIGHTS; lightsT = 0 }
+            if (phase == PH_SELECT) startRace()
         })
 
         scene.createRenderable(0, function (target: Image) {
             if (phase == PH_SELECT) {
                 target.fill(C_GRASS_L)
-                target.fillRect(4, 24, 152, 74, C_PANEL)
-                target.print("FIRST-PERSON SPLIT", 26, 28, 1, image.font5)
-                target.print("PLAYERS: " + numPlayers, 44, 44, 1, image.font8)
-                target.print("IS EVERYBODY READY?", 24, 62, 1, image.font5)
-                target.print("UP/DOWN to change", 30, 74, C_YEL, image.font5)
-                target.print("A = START", 54, 84, C_GRN, image.font5)
+                target.fillRect(4, 14, 152, 96, C_PANEL)
+                target.print("F1 SPLIT-SCREEN RACE", 22, 18, 1, image.font5)
+                target.print("PLAYERS: " + numPlayers, 12, 32, 1, image.font5)
+                target.print("(UP/DOWN)", 92, 32, C_YEL, image.font5)
+                target.print("CPU CARS: " + cpuCount, 12, 44, 1, image.font5)
+                target.print("(B)", 110, 44, C_YEL, image.font5)
+                target.print("TRACK: " + TRACK_NAMES[selTrack], 12, 56, C_GRN, image.font5)
+                target.print("(LEFT/RIGHT)", 84, 56, C_YEL, image.font5)
+                target.print("BOOST = B   DODGE OIL", 18, 76, 1, image.font5)
+                target.print("GRAB YELLOW = SPEED", 22, 86, 1, image.font5)
+                target.print("A = START", 54, 98, C_GRN, image.font5)
                 return
             }
             // LIGHTS or RACE: split views (+ countdown lights overlaid in LIGHTS)
@@ -556,7 +756,7 @@ namespace fpSplit {
                 return
             }
             if (phase != PH_RACE || finished) return
-            for (let i = 0; i < numPlayers; i++) drive(i, dt)
+            for (let i = 0; i < numPlayers + cpuCount; i++) drive(i, dt)
         })
     }
 }
