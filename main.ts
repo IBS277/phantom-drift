@@ -90,7 +90,7 @@ namespace fpSplit {
     const WEAR_RATE = 0.04           // wear gained per second of racing (visible in a lap or two)
     const WEAR_SLOW = 0.35          // top-speed loss fraction at full wear
     const WEAR_GRIP = 0.4           // grip loss fraction at full wear
-    const PIT_MASH = 0.12           // pit progress per A press (≈9 presses)
+    const PIT_TIME = 1.6            // seconds to service tyres in the pit lane
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -120,7 +120,8 @@ namespace fpSplit {
     // rows: 0 players,1 track,2 cpu,3 laps,4 pit,5 difficulty,6 weather,7 START
     const MENU_ROWS = 8
     let menuRow = 0
-    let pitOn = false               // pit stops enabled?
+    let pitMode = 0                 // 0 OFF, 1 AUTO (pit when worn), 2 MANUAL (steer into pit lane)
+    const PITMODE_NAMES = ["OFF", "AUTO", "MANUAL"]
     let difficulty = 0              // 0 easy, 1 hard
     let wxMode = 2                  // 0 off(sunny), 1 fixed, 2 dynamic
     let wxFixed = 0                 // chosen weather when wxMode == fixed
@@ -172,8 +173,8 @@ namespace fpSplit {
             cpuCount = Math.max(0, Math.min(maxC, cpuCount + dir))
         } else if (menuRow == 3) {                  // laps 1..9
             lapsToWin = Math.max(1, Math.min(9, lapsToWin + dir))
-        } else if (menuRow == 4) {                  // pit stops on/off
-            pitOn = !pitOn
+        } else if (menuRow == 4) {                  // pit stops off/auto/manual
+            pitMode = (pitMode + dir + 3) % 3
         } else if (menuRow == 5) {                  // difficulty
             difficulty = (difficulty + dir + 2) % 2
         } else if (menuRow == 6) {                  // weather: OFF, FIXED x4, DYNAMIC
@@ -234,7 +235,7 @@ namespace fpSplit {
         menuLine(target, 1, 25, "TRACK", TRACK_NAMES[selTrack])
         menuLine(target, 2, 35, "CPU CARS", "" + cpuCount)
         menuLine(target, 3, 45, "LAPS", "" + lapsToWin)
-        menuLine(target, 4, 55, "PIT STOPS", pitOn ? "ON" : "OFF")
+        menuLine(target, 4, 55, "PIT STOPS", PITMODE_NAMES[pitMode])
         menuLine(target, 5, 65, "DIFFICULTY", DIFF_NAMES[difficulty])
         menuLine(target, 6, 75, "WEATHER", wxLabel)
         // START row
@@ -275,15 +276,38 @@ namespace fpSplit {
             target.fillRect(x, baseY - h, 20, h, C_PANEL)
             target.drawRect(x, baseY - h, 20, h, 1)
             target.print("" + (idx + 1), x + 8, baseY - h + 2, C_YEL, image.font5)
-            // a little car on top in the player's colour
-            const cy = baseY - h - 12
-            target.fillRect(x + 4, cy + 4, 12, 7, CAR_COLORS[car])   // body
-            target.fillRect(x + 2, cy + 5, 4, 5, 15)                  // L tyre
-            target.fillRect(x + 14, cy + 5, 4, 5, 15)                 // R tyre
-            target.fillRect(x + 5, cy + 1, 10, 2, 1)                  // wing
-            target.print("P" + (car + 1), x + 4, cy - 6, CAR_COLORS[car], image.font5)
+            // a celebrating driver hopping on top — the winner jumps higher/faster
+            const isWin = idx == 0
+            const phase2 = podiumT * (isWin ? 7 : 4) + s
+            const hop = Math.round((isWin ? 5 : 2) * Math.abs(Math.sin(phase2)))
+            const fx = x + 6
+            const fy = baseY - h - 16 - hop          // feet baseline (jumps up by hop)
+            drawDriver(target, fx, fy, CAR_COLORS[car], hop > 0)
+            target.print("P" + (car + 1), x + 4, fy - 8, CAR_COLORS[car], image.font5)
         }
         target.print("PRESS RESET TO RACE AGAIN", 16, 119 - 6, 13, image.font5)
+    }
+
+    // Draw a tiny celebrating racing driver: helmet (player colour), torso,
+    // legs, and arms. When `up` the arms are raised in a victory pose.
+    function drawDriver(target: Image, x: number, y: number, col: number, up: boolean) {
+        // helmet
+        target.fillRect(x + 2, y, 5, 4, col)
+        target.setPixel(x + 4, y + 2, 1)             // visor glint
+        // torso (white race suit with a coloured stripe)
+        target.fillRect(x + 2, y + 4, 5, 6, 1)
+        target.fillRect(x + 4, y + 4, 1, 6, col)
+        // legs
+        target.fillRect(x + 2, y + 10, 2, 4, 15)
+        target.fillRect(x + 5, y + 10, 2, 4, 15)
+        // arms: raised when celebrating, else down
+        if (up) {
+            target.fillRect(x, y + 2, 2, 4, 1); target.setPixel(x, y + 1, col)
+            target.fillRect(x + 7, y + 2, 2, 4, 1); target.setPixel(x + 8, y + 1, col)
+        } else {
+            target.fillRect(x, y + 5, 2, 4, 1)
+            target.fillRect(x + 7, y + 5, 2, 4, 1)
+        }
     }
 
     // --- weather: how much grip is lost (1 = full grip) ---
@@ -595,8 +619,8 @@ namespace fpSplit {
             }
         }
 
-        // pit zone: a blue-striped patch on the right edge of the road ahead
-        if (pitOn) {
+        // pit lane: a blue-striped lane on the right edge of the road ahead
+        if (pitMode == 2) {
             let dP = pitD - myLap
             if (dP < 0) dP += lapLen
             if (dP > 2 && dP < see) {
@@ -700,7 +724,7 @@ namespace fpSplit {
         const bw = Math.round((barW - 2) * bfrac)
         if (bw > 0) target.fillRect(ox + 2, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
         // tyre-wear gauge (only when pit stops are enabled): green->red as worn
-        if (pitOn) {
+        if (pitMode > 0) {
             const wy = by + 4
             target.drawRect(ox + 1, wy, barW, 3, C_PANEL)
             const ww = Math.round((barW - 2) * (1 - wear[i]))   // remaining tyre life
@@ -709,21 +733,20 @@ namespace fpSplit {
         }
         // line 3: current lap time + best (only when room — 2-player full width)
         if (vw >= 120) {
-            const ty = pitOn ? sy + 14 : sy + 10
+            const ty = pitMode > 0 ? sy + 14 : sy + 10
             target.print("T " + fmtTime(lapTime[i]), ox + 2, ty, 1, image.font5)
             target.print("B " + fmtTime(bestLap[i]), ox + 2, ty + 7, C_YEL, image.font5)
         }
     }
 
-    // Pit-stop overlay: when this player is in the box, show CHANGE TYRES and a
-    // mash bar. For humans, tapping A fills it (handled via the A event below).
+    // Pit-stop overlay: shown while servicing in the pit lane (timed auto-stop).
     function drawPit(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
         const cx = ox + (vw >> 1), cy = oy + (vh >> 1)
         target.fillRect(ox + 6, cy - 14, vw - 12, 28, 0)
         target.drawRect(ox + 6, cy - 14, vw - 12, 28, C_YEL)
-        target.print("PIT STOP!", cx - 18, cy - 11, C_YEL, image.font5)
-        target.print(isCPU[i] ? "SERVICING..." : "MASH A!", cx - (isCPU[i] ? 22 : 14), cy - 2, 1, image.font5)
-        // progress bar
+        target.print("IN THE PITS", cx - 22, cy - 11, C_YEL, image.font5)
+        target.print("NEW TYRES...", cx - 22, cy - 2, 1, image.font5)
+        // service progress bar
         const bw = vw - 24
         target.drawRect(ox + 12, cy + 6, bw, 5, C_PANEL)
         const fw = Math.round((bw - 2) * Math.min(1, pitProg[i]))
@@ -779,29 +802,35 @@ namespace fpSplit {
             return
         }
 
-        // --- pit stop (button-mash to change tyres) ---
+        // --- pit servicing: a timed auto-stop (crawls forward in the lane) ---
         if (pitting[i]) {
-            spd[i] = Math.max(0, spd[i] - spd[i] * 4 * dt)   // stopped in the box
-            // mash A (CPU auto-mashes) to fill the progress bar
-            const mash = isCPU[i] ? PIT_MASH * 60 * dt : 0
-            pitProg[i] += mash
+            // crawl through the pit lane at a slow pit-limiter speed
+            spd[i] = Math.min(spd[i] + ACCEL * dt, MAX_SPEED * 0.22)
+            pos[i] += spd[i] * dt
+            lat[i] = 1.15                       // sit in the pit lane (right of the road)
+            pitProg[i] += dt / PIT_TIME
             if (pitProg[i] >= 1) {
-                pitting[i] = false; pitProg[i] = 0; wear[i] = 0   // fresh tyres!
+                pitting[i] = false; pitProg[i] = 0; wear[i] = 0   // fresh tyres, rejoin
+                lat[i] = 0.6
             }
             return
         }
-        // tyres wear with distance raced; enter the pit if in the zone + press A
+        // tyres wear with distance raced
         wear[i] = Math.min(1, wear[i] + WEAR_RATE * dt)
-        if (pitOn) {
+        if (pitMode > 0) {
             const lapPos = ((pos[i] % lapLen) + lapLen) % lapLen
             const curLap = Math.floor(pos[i] / lapLen)
-            // wide, forgiving zone — anywhere across the road counts
-            const inZone = Math.abs(lapPos - pitD) < 22
+            const inZone = Math.abs(lapPos - pitD) < 24
             const notPittedThisLap = !(pitDone[i] & (1 << (curLap & 7)))
-            const wantPit = isCPU[i] ? (wear[i] > 0.6) : ctrlFor(i).A.isPressed()
-            // store whether this player CAN pit right now (for the on-screen prompt)
             canPit[i] = inZone && notPittedThisLap
-            if (inZone && wantPit && notPittedThisLap) {
+            // entry: AUTO pits when tyres are worn; MANUAL pits when you steer
+            // fully right into the pit lane (or CPU steers in when worn).
+            let enter = false
+            if (notPittedThisLap && inZone) {
+                if (pitMode == 1) enter = wear[i] > 0.55          // AUTO
+                else enter = isCPU[i] ? wear[i] > 0.6 : lat[i] > 0.7   // MANUAL: steer right
+            }
+            if (enter) {
                 pitting[i] = true; pitProg[i] = 0
                 pitDone[i] |= (1 << (curLap & 7))
                 return
@@ -816,7 +845,7 @@ namespace fpSplit {
         else boost[i] = Math.min(BOOST_MAX, boost[i] + BOOST_REGEN * dt)
         if (boostFx[i] > 0) boostFx[i] -= dt   // pickup bonus decays
         // worn tyres lower top speed (boost overrides wear's speed loss)
-        const wearSlow = pitOn ? (1 - WEAR_SLOW * wear[i]) : 1
+        const wearSlow = pitMode > 0 ? (1 - WEAR_SLOW * wear[i]) : 1
         const topSpeed = (boosting[i] || boostFx[i] > 0) ? BOOST_SPEED : MAX_SPEED * wearSlow
 
         // --- throttle / brake ---
@@ -841,7 +870,7 @@ namespace fpSplit {
         // can't reverse past the start line — clamp to the grid so laps never go negative
         if (pos[i] < 0) { pos[i] = 0; if (spd[i] < 0) spd[i] = 0 }
         // grip = weather grip, further reduced by tyre wear when pit stops are on
-        const grip = wxGrip() * (pitOn ? (1 - WEAR_GRIP * wear[i]) : 1)
+        const grip = wxGrip() * (pitMode > 0 ? (1 - WEAR_GRIP * wear[i]) : 1)
         const mf = (Math.abs(spd[i]) > 2 ? 1 : 0.6) * grip
         lat[i] += sdisp[i] * STEER * dt * mf
         // less grip => the bend throws you wider (centrifugal divided by grip)
@@ -979,18 +1008,11 @@ namespace fpSplit {
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) startRace()
-            else if (pitting[0]) pitProg[0] += PIT_MASH    // mash to change tyres
         })
-        // A-mash during a pit stop for players 2-4
-        controller.player2.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_RACE && pitting[1]) pitProg[1] += PIT_MASH
-        })
-        controller.player3.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_RACE && pitting[2]) pitProg[2] += PIT_MASH
-        })
-        controller.player4.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_RACE && pitting[3]) pitProg[3] += PIT_MASH
-        })
+        // keep player2-4 referenced so MakeCode keeps the multiplayer host button
+        controller.player2.A.onEvent(ControllerButtonEvent.Pressed, function () { })
+        controller.player3.A.onEvent(ControllerButtonEvent.Pressed, function () { })
+        controller.player4.A.onEvent(ControllerButtonEvent.Pressed, function () { })
 
         scene.createRenderable(0, function (target: Image) {
             if (phase == PH_SELECT) {
@@ -1010,12 +1032,12 @@ namespace fpSplit {
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
                 if (phase == PH_RACE && pitting[i]) drawPit(target, ox, oy, vw, vh, i)
-                else if (phase == PH_RACE && pitOn && canPit[i] && !isCPU[i]) {
-                    // flashing prompt when this player can pit
-                    if ((Math.floor(pos[i] * 3) & 1) == 0) {
-                        const px = ox + (vw >> 1) - 30, py = oy + vh - 16
-                        target.fillRect(px, py, 62, 9, 0)
-                        target.print("PRESS A: PIT", px + 2, py + 1, C_GRN, image.font5)
+                else if (phase == PH_RACE && pitMode == 2 && canPit[i] && !isCPU[i]) {
+                    // MANUAL: flashing prompt to steer right into the pit lane
+                    if ((Math.floor(clock * 3) & 1) == 0) {
+                        const px = ox + (vw >> 1) - 34, py = oy + vh - 16
+                        target.fillRect(px, py, 70, 9, 0)
+                        target.print("STEER RIGHT: PIT", px + 2, py + 1, 8, image.font5)
                     }
                 }
             }
