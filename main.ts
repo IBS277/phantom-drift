@@ -581,6 +581,22 @@ namespace fpSplit {
         const sky = wxSky(), grass = wxGrass(), rL = wxRoadL(), rD = wxRoadD()
         target.fillRect(ox, oy, vw, hor - oy, sky)
 
+        // Is the pit lane visible for this player? It runs alongside the road for
+        // a stretch around pitD. pitNear = 0 outside it, ramps to 1 in the middle.
+        const lapPos = ((pos[i] % lapLen) + lapLen) % lapLen
+        let dPit = pitD - lapPos
+        if (dPit < -lapLen / 2) dPit += lapLen
+        if (dPit > lapLen / 2) dPit -= lapLen
+        const pitShown = pitMode > 0 && dPit > -90 && dPit < 140
+        // fade the lane in/out at its ends so it doesn't pop
+        let pitNear = 0
+        if (pitShown) {
+            if (dPit > 110) pitNear = (140 - dPit) / 30
+            else if (dPit < -60) pitNear = (dPit + 90) / 30
+            else pitNear = 1
+            pitNear = Math.max(0, Math.min(1, pitNear))
+        }
+
         for (let y = hor; y < bot; y++) {
             const t = (y - hor) / (bot - hor)
             const roadW = t * hw
@@ -593,6 +609,21 @@ namespace fpSplit {
             clipH(target, cx - roadW - rw, cx + roadW + rw, y, rumble, ox, ox + vw)
             clipH(target, cx - roadW, cx + roadW, y, road, ox, ox + vw)
             if (band == 0 && roadW > 4) clipH(target, cx - 1, cx + 1, y, C_LINE, ox, ox + vw)
+
+            // ---- PIT LANE: a wall + a parallel lane on the RIGHT of the road ----
+            if (pitNear > 0 && roadW > 1) {
+                const laneW = roadW * 0.8 * pitNear         // pit lane width
+                const wallW = Math.max(1, Math.round(roadW * 0.1))
+                const wallX = cx + roadW + rw               // just outside the rumble
+                // striped pit wall
+                const wallCol = band ? 2 : 1
+                clipH(target, wallX, wallX + wallW, y, wallCol, ox, ox + vw)
+                // pit-lane tarmac beyond the wall (slightly darker)
+                const laneL = wallX + wallW
+                clipH(target, laneL, laneL + laneW, y, band ? 11 : 10, ox, ox + vw)
+                // blue edge line on the far side of the pit lane
+                clipH(target, laneL + laneW, laneL + laneW + 1, y, 8, ox, ox + vw)
+            }
         }
 
         // the other cars (players + CPU) by relative track position
@@ -619,8 +650,32 @@ namespace fpSplit {
                 drawCar(target, cxj, yb, cw, j, frame, ox, ox + vw, oy, bot)
         }
 
-        // items (oil slicks + boost tokens) projected onto the road ahead
         const myLap = ((pos[i] % lapLen) + lapLen) % lapLen
+
+        // PIT BOX marker on the pit lane (a yellow "PIT" garage sign at pitD)
+        if (pitMode > 0) {
+            let dB = pitD - myLap
+            if (dB < 0) dB += lapLen
+            if (dB > 2 && dB < see) {
+                const tr = 1 - dB / see
+                const roadY = hor + tr * (bot - hor)
+                const yB = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
+                const rwid = tr * hw
+                // box sits in the centre of the pit lane (to the right of the road)
+                const laneCx = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid - lean * tr + 1.55 * rwid)
+                const bw = Math.max(3, Math.round(tr * 16))
+                const bh = Math.max(2, Math.round(tr * 10))
+                if (yB > oy && yB <= bot && laneCx < ox + vw) {
+                    // garage box
+                    for (let r = 0; r < bh; r++)
+                        clipH(target, laneCx - bw, laneCx + bw, yB - r, C_PANEL, ox, ox + vw)
+                    target.drawRect(Math.max(ox, laneCx - bw), yB - bh, bw * 2, bh, C_YEL)
+                    if (tr > 0.45) target.print("PIT", Math.max(ox, laneCx - 6), yB - bh - 6, C_YEL, image.font5)
+                }
+            }
+        }
+
+        // items (oil slicks + boost tokens) projected onto the road ahead
         for (const it of items) {
             if (it.taken & (1 << i)) continue
             let dI = it.d - myLap
@@ -1013,7 +1068,7 @@ namespace fpSplit {
             // slowing to a stop over the last third of the drive-in
             if (pitDriveT[i] > 0.9) spd[i] = Math.max(0, spd[i] - spd[i] * 4 * dt)
             pos[i] += spd[i] * dt
-            lat[i] += (1.2 - lat[i]) * Math.min(1, dt * 4)   // ease over to the pit lane
+            lat[i] += (1.55 - lat[i]) * Math.min(1, dt * 4)   // ease over to the pit lane
             steerAng[i] = 0.6                                  // wheels turned into the lane
             if (pitDriveT[i] >= 1.3) {                         // arrived → open tyre menu
                 pitDriving[i] = false
@@ -1025,7 +1080,7 @@ namespace fpSplit {
         // --- pit: TYRE CHOICE (car parked in the box, menu shown) ---
         if (pitChoosing[i]) {
             spd[i] = Math.max(0, spd[i] - spd[i] * 5 * dt)   // brake to a stop
-            lat[i] = 1.15
+            lat[i] = 1.55
             if (isCPU[i]) {
                 // CPU: WET in the rain, else by laps remaining (soft late, hard early)
                 const lapsLeft = lapsToWin - Math.floor(pos[i] / lapLen)
@@ -1041,7 +1096,7 @@ namespace fpSplit {
         if (pitting[i]) {
             spd[i] = Math.min(spd[i] + ACCEL * dt, MAX_SPEED * 0.22)
             pos[i] += spd[i] * dt
-            lat[i] = 1.15
+            lat[i] = 1.55
             pitProg[i] += dt / PIT_TIME
             if (pitProg[i] >= 1) {
                 pitting[i] = false; pitProg[i] = 0; wear[i] = 0   // fresh tyres, rejoin
@@ -1289,11 +1344,11 @@ namespace fpSplit {
                 else if (phase == PH_RACE && pitChoosing[i]) drawTyreMenu(target, ox, oy, vw, vh, i)
                 else if (phase == PH_RACE && pitting[i]) drawPit(target, ox, oy, vw, vh, i)
                 else if (phase == PH_RACE && pitMode == 2 && canPit[i] && !isCPU[i]) {
-                    // MANUAL: flashing prompt to steer right into the pit lane
+                    // MANUAL: flashing prompt to steer into the pit lane on the right
                     if ((Math.floor(clock * 3) & 1) == 0) {
-                        const px = ox + (vw >> 1) - 34, py = oy + vh - 16
-                        target.fillRect(px, py, 70, 9, 0)
-                        target.print("STEER RIGHT: PIT", px + 2, py + 1, 8, image.font5)
+                        const px = ox + (vw >> 1) - 38, py = oy + vh - 16
+                        target.fillRect(px, py, 78, 9, 0)
+                        target.print(">> INTO PIT LANE", px + 2, py + 1, 8, image.font5)
                     }
                 }
             }
