@@ -56,6 +56,7 @@ namespace fpSplit {
         }
     }
     let items: TrackItem[] = []
+    let pitD = 0                     // pit-zone distance along the lap (set on start)
 
     // ---- track (set via run / setTrack) ----
     let trackCurve = [0]
@@ -78,6 +79,16 @@ namespace fpSplit {
     let spinT = [0, 0, 0, 0]        // seconds left spinning out (hazard hit)
     let isCPU = [false, false, false, false]  // AI-controlled car?
     let boostFx = [0, 0, 0, 0]      // pickup speed-bonus timer (seconds)
+    let wear = [0, 0, 0, 0]         // tyre wear 0..1 (1 = fully worn)
+    let pitting = [false, false, false, false]  // currently in a pit stop?
+    let pitProg = [0, 0, 0, 0]      // pit-stop progress 0..1 (button-mash fills it)
+    let pitDone = [0, 0, 0, 0]      // laps on which this player has already pitted (bitmask)
+
+    // tyre-wear tuning
+    const WEAR_RATE = 0.018          // wear gained per second of racing
+    const WEAR_SLOW = 0.35          // top-speed loss fraction at full wear
+    const WEAR_GRIP = 0.4           // grip loss fraction at full wear
+    const PIT_MASH = 0.12           // pit progress per A press (≈9 presses)
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -182,12 +193,14 @@ namespace fpSplit {
             : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
         setTrack(chosen, segLen)
         buildItems()
+        pitD = Math.floor(lapLen * 0.85)   // pit zone near the end of the lap
         for (let k = 0; k < 4; k++) {
             isCPU[k] = k >= numPlayers && k < numPlayers + cpuCount
             pos[k] = -k * 3
             spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
             plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
             boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
+            wear[k] = 0; pitting[k] = false; pitProg[k] = 0; pitDone[k] = 0
         }
         // weather mode: off => always sunny; fixed => chosen; dynamic => starts sunny, rolls each lap
         weather = wxMode == 0 ? WX_SUN : wxMode == 1 ? wxFixed : WX_SUN
@@ -580,6 +593,25 @@ namespace fpSplit {
             }
         }
 
+        // pit zone: a blue-striped patch on the right edge of the road ahead
+        if (pitOn) {
+            let dP = pitD - myLap
+            if (dP < 0) dP += lapLen
+            if (dP > 2 && dP < see) {
+                const tr = 1 - dP / see
+                const roadY = hor + tr * (bot - hor)
+                const yP = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
+                const rwid = tr * hw
+                const xP = Math.round(ox + (vw >> 1) + cur[i] * (1 - tr) * (1 - tr) * bendScale - lat[i] * rwid - lean * tr + 0.8 * rwid)
+                const pw = Math.max(2, Math.round(tr * 10))
+                if (yP > oy && yP <= bot) {
+                    for (let r = 0; r < pw; r++)
+                        clipH(target, xP - pw + r, xP + pw - r, yP - r, ((yP + r) & 1) ? 8 : 1, ox, ox + vw)
+                    if (tr > 0.4) target.print("PIT", Math.max(ox, xP - 7), yP - pw - 6, 8, image.font5)
+                }
+            }
+        }
+
         // boost speed-lines: streaks from the edges when this car is boosting
         if (boosting[i] || boostFx[i] > 0) {
             const t6 = Math.floor(pos[i] * 2) & 7
@@ -587,6 +619,18 @@ namespace fpSplit {
                 const yy = oy + 6 + ((s * 13 + t6) % (vh - 8))
                 clipH(target, ox + 1, ox + 6, yy, 1, ox, ox + vw)
                 clipH(target, ox + vw - 6, ox + vw - 1, yy, 1, ox, ox + vw)
+            }
+        }
+
+        // rain drops streaking down when it's raining (diagonal white streaks)
+        if (weather == WX_RAIN) {
+            const rt = Math.floor(pos[i] * 8)
+            for (let s = 0; s < 14; s++) {
+                const rx = ox + ((s * 23 + rt * 2) % vw)
+                const ry = oy + ((s * 17 + rt * 6) % (vh - 3))
+                target.setPixel(rx, ry, 1)
+                target.setPixel(rx + 1, ry + 1, 1)
+                target.setPixel(rx + 2, ry + 2, 9)
             }
         }
 
@@ -652,11 +696,35 @@ namespace fpSplit {
         const bfrac = Math.max(0, Math.min(1, boost[i] / BOOST_MAX))
         const bw = Math.round((barW - 2) * bfrac)
         if (bw > 0) target.fillRect(ox + 2, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
+        // tyre-wear gauge (only when pit stops are enabled): green->red as worn
+        if (pitOn) {
+            const wy = by + 4
+            target.drawRect(ox + 1, wy, barW, 3, C_PANEL)
+            const ww = Math.round((barW - 2) * (1 - wear[i]))   // remaining tyre life
+            const wcol = wear[i] > 0.7 ? C_RED : wear[i] > 0.4 ? C_YEL : C_GRN
+            if (ww > 0) target.fillRect(ox + 2, wy + 1, ww, 1, wcol)
+        }
         // line 3: current lap time + best (only when room — 2-player full width)
         if (vw >= 120) {
-            target.print("T " + fmtTime(lapTime[i]), ox + 2, sy + 10, 1, image.font5)
-            target.print("B " + fmtTime(bestLap[i]), ox + 2, sy + 17, C_YEL, image.font5)
+            const ty = pitOn ? sy + 14 : sy + 10
+            target.print("T " + fmtTime(lapTime[i]), ox + 2, ty, 1, image.font5)
+            target.print("B " + fmtTime(bestLap[i]), ox + 2, ty + 7, C_YEL, image.font5)
         }
+    }
+
+    // Pit-stop overlay: when this player is in the box, show CHANGE TYRES and a
+    // mash bar. For humans, tapping A fills it (handled via the A event below).
+    function drawPit(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
+        const cx = ox + (vw >> 1), cy = oy + (vh >> 1)
+        target.fillRect(ox + 6, cy - 14, vw - 12, 28, 0)
+        target.drawRect(ox + 6, cy - 14, vw - 12, 28, C_YEL)
+        target.print("PIT STOP!", cx - 18, cy - 11, C_YEL, image.font5)
+        target.print(isCPU[i] ? "SERVICING..." : "MASH A!", cx - (isCPU[i] ? 22 : 14), cy - 2, 1, image.font5)
+        // progress bar
+        const bw = vw - 24
+        target.drawRect(ox + 12, cy + 6, bw, 5, C_PANEL)
+        const fw = Math.round((bw - 2) * Math.min(1, pitProg[i]))
+        if (fw > 0) target.fillRect(ox + 13, cy + 7, fw, 3, C_GRN)
     }
 
     function drawRearMirror(target: Image, ox: number, oy: number, vw: number, i: number) {
@@ -708,12 +776,40 @@ namespace fpSplit {
             return
         }
 
+        // --- pit stop (button-mash to change tyres) ---
+        if (pitting[i]) {
+            spd[i] = Math.max(0, spd[i] - spd[i] * 4 * dt)   // stopped in the box
+            // mash A (CPU auto-mashes) to fill the progress bar
+            const mash = isCPU[i] ? PIT_MASH * 60 * dt : 0
+            pitProg[i] += mash
+            if (pitProg[i] >= 1) {
+                pitting[i] = false; pitProg[i] = 0; wear[i] = 0   // fresh tyres!
+            }
+            return
+        }
+        // tyres wear with distance raced; enter the pit if in the zone + press A
+        wear[i] = Math.min(1, wear[i] + WEAR_RATE * dt)
+        if (pitOn) {
+            const lapPos = ((pos[i] % lapLen) + lapLen) % lapLen
+            const curLap = Math.floor(pos[i] / lapLen)
+            const inZone = Math.abs(lapPos - pitD) < 8 && Math.abs(lat[i]) > 0.45
+            const notPittedThisLap = !(pitDone[i] & (1 << (curLap & 7)))
+            const wantPit = isCPU[i] ? (wear[i] > 0.7) : ctrlFor(i).A.isPressed()
+            if (inZone && wantPit && notPittedThisLap && wear[i] > 0.2) {
+                pitting[i] = true; pitProg[i] = 0
+                pitDone[i] |= (1 << (curLap & 7))
+                return
+            }
+        }
+
         // --- boost ---
         boosting[i] = wantBoost && boost[i] > 0
         if (boosting[i]) boost[i] = Math.max(0, boost[i] - BOOST_USE * dt)
         else boost[i] = Math.min(BOOST_MAX, boost[i] + BOOST_REGEN * dt)
         if (boostFx[i] > 0) boostFx[i] -= dt   // pickup bonus decays
-        const topSpeed = (boosting[i] || boostFx[i] > 0) ? BOOST_SPEED : MAX_SPEED
+        // worn tyres lower top speed (boost overrides wear's speed loss)
+        const wearSlow = pitOn ? (1 - WEAR_SLOW * wear[i]) : 1
+        const topSpeed = (boosting[i] || boostFx[i] > 0) ? BOOST_SPEED : MAX_SPEED * wearSlow
 
         // --- throttle / brake ---
         if (accel) spd[i] += ACCEL * dt
@@ -734,7 +830,8 @@ namespace fpSplit {
 
         cur[i] += (curveAt(pos[i] + 40) - cur[i]) * Math.min(1, dt * 2.5)
         pos[i] += spd[i] * dt
-        const grip = wxGrip()
+        // grip = weather grip, further reduced by tyre wear when pit stops are on
+        const grip = wxGrip() * (pitOn ? (1 - WEAR_GRIP * wear[i]) : 1)
         const mf = (Math.abs(spd[i]) > 2 ? 1 : 0.6) * grip
         lat[i] += sdisp[i] * STEER * dt * mf
         // less grip => the bend throws you wider (centrifugal divided by grip)
@@ -872,6 +969,17 @@ namespace fpSplit {
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) startRace()
+            else if (pitting[0]) pitProg[0] += PIT_MASH    // mash to change tyres
+        })
+        // A-mash during a pit stop for players 2-4
+        controller.player2.A.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_RACE && pitting[1]) pitProg[1] += PIT_MASH
+        })
+        controller.player3.A.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_RACE && pitting[2]) pitProg[2] += PIT_MASH
+        })
+        controller.player4.A.onEvent(ControllerButtonEvent.Pressed, function () {
+            if (phase == PH_RACE && pitting[3]) pitProg[3] += PIT_MASH
         })
 
         scene.createRenderable(0, function (target: Image) {
@@ -891,6 +999,7 @@ namespace fpSplit {
                 else { ox = (i % 2) * 80; oy = i < 2 ? 0 : 60; vw = 80; vh = 60 }
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
+                if (phase == PH_RACE && pitting[i]) drawPit(target, ox, oy, vw, vh, i)
             }
             target.fillRect(0, 59, 160, 2, 15)
             if (numPlayers > 2) target.fillRect(79, 0, 2, 120, 15)
