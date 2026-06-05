@@ -89,96 +89,92 @@ namespace fpSplit {
     // two frames (A/B) whose tyre tread lines (1=white) sit at different rows, so
     // alternating them reads as the wheels SPINNING. Red (2) = player livery.
 
-    // NEAR — 21x18: full wing on top, two tall rear tyres, central body + cockpit.
+    // NEAR — 21x16: rear view. Wing bar on top, body+cockpit in the middle, and
+    // TWO rear tyres whose BOTTOMS sit on the same ground line (bottom row) so the
+    // whole car contacts the road. The white tread (1) marks the spin frame.
     const F1_NEAR_A = img`
         . . . . f f f f f f f f f f f f f . . . .
         . . . . f 1 1 1 1 1 1 1 1 1 1 1 f . . . .
-        . . . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f . . . f 2 2 2 f . . . f f f . .
-        . f 1 f f . . f f 1 2 1 f f . . f f 1 f .
-        . f f f f . . f f 2 2 2 f f . . f f f f .
-        . f 1 f f . f f f 2 2 2 f f f . f f 1 f .
-        . f f f f . f f 1 2 2 2 1 f f . f f f f .
-        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
-        . f f f f . f f 2 2 2 2 2 f f . f f f f .
-        . f 1 f f . f f 1 2 2 2 1 f f . f f 1 f .
-        . f f f f . f f 2 2 2 2 2 f f . f f f f .
-        . f 1 f f . f f 2 1 2 1 2 f f . f f 1 f .
-        . f f f f . f f 2 2 2 2 2 f f . f f f f .
-        . f f f f . f f 1 1 1 1 1 f f . f f f f .
-        . f f f f . . f 2 2 2 2 2 f . . f f f f .
-        . . f f . . . f f 1 1 1 f f . . . f f . .
-        . . f f . . . . f f f f f . . . . f f . .
+        . . . . f f f f f f f f f f f f f . . . .
+        . . . . . . . f f 2 2 2 f f . . . . . . .
+        . . . . . . f f 1 2 2 2 1 f f . . . . . .
+        . . . . . . f 2 2 2 2 2 2 2 f . . . . . .
+        . . . f f . f 2 2 2 2 2 2 2 f . f f . . .
+        . . f f f f f 2 2 2 1 2 2 2 f f f f f . .
+        . f f f f f f 2 2 2 2 2 2 2 f f f f f f .
+        . f f 1 f f f 2 2 2 2 2 2 2 f f f 1 f f .
+        . f f f f f f 2 2 2 1 2 2 2 f f f f f f .
+        . f f 1 f f f 1 1 1 1 1 1 1 f f f 1 f f .
+        . f f f f f f 1 1 1 1 1 1 1 f f f f f f .
+        . f f 1 f f . f 1 1 1 1 1 f . f f 1 f f .
+        . f f f f f . . f f f f f . . f f f f f .
+        . . f f f f . . . . . . . . . f f f f . .
     `
     const F1_NEAR_B = img`
         . . . . f f f f f f f f f f f f f . . . .
         . . . . f 1 1 1 1 1 1 1 1 1 1 1 f . . . .
-        . . . . f f f f f 2 2 2 f f f f f . . . .
-        . . f f f . . . f 2 2 2 f . . . f f f . .
-        . f f f f . . f f 1 2 1 f f . . f f f f .
-        . f 1 f f . . f f 2 2 2 f f . . f f 1 f .
-        . f f f f . f f f 2 2 2 f f f . f f f f .
-        . f 1 f f . f f 1 2 2 2 1 f f . f f 1 f .
-        . f f f f . f f 2 2 2 2 2 f f . f f f f .
-        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
-        . f f f f . f f 1 2 2 2 1 f f . f f f f .
-        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
-        . f f f f . f f 2 1 2 1 2 f f . f f f f .
-        . f 1 f f . f f 2 2 2 2 2 f f . f f 1 f .
-        . f f f f . f f 1 1 1 1 1 f f . f f f f .
-        . f f f f . . f 2 2 2 2 2 f . . f f f f .
-        . . f f . . . f f 1 1 1 f f . . . f f . .
-        . . f f . . . . f f f f f . . . . f f . .
+        . . . . f f f f f f f f f f f f f . . . .
+        . . . . . . . f f 2 2 2 f f . . . . . . .
+        . . . . . . f f 1 2 2 2 1 f f . . . . . .
+        . . . . . . f 2 2 2 2 2 2 2 f . . . . . .
+        . . . f f . f 2 2 2 2 2 2 2 f . f f . . .
+        . . f f f f f 2 2 2 1 2 2 2 f f f f f . .
+        . f f 1 f f f 2 2 2 2 2 2 2 f f f 1 f f .
+        . f f f f f f 2 2 2 2 2 2 2 f f f f f f .
+        . f f 1 f f f 2 2 2 1 2 2 2 f f f 1 f f .
+        . f f f f f f 1 1 1 1 1 1 1 f f f f f f .
+        . f f 1 f f f 1 1 1 1 1 1 1 f f f 1 f f .
+        . f f f f f . f 1 1 1 1 1 f . f f f f f .
+        . f f f f f . . f f f f f . . f f f f f .
+        . . f f f f . . . . . . . . . f f f f . .
     `
 
-    // MID — 15x12
+    // MID — 15x11
     const F1_MID_A = img`
-        . . . f f f f f f f f f . . .
-        . . . f 1 1 1 1 1 1 1 f . . .
-        . . f f f f 2 2 2 f f f f . .
-        . f 1 f . f 2 1 2 f . f 1 f .
-        . f f f . f 2 2 2 f . f f f .
-        . f 1 f . f 1 2 1 f . f 1 f .
-        . f f f . f 2 2 2 f . f f f .
-        . f 1 f . f 2 2 2 f . f 1 f .
-        . f f f . f 1 2 1 f . f f f .
-        . f f f . f 2 2 2 f . f f f .
-        . . f f . f 1 1 1 f . f f . .
+        . . . f f f f f f f f . . . .
+        . . . f 1 1 1 1 1 1 f . . . .
+        . . . . . f 2 2 2 f . . . . .
+        . . . . f 2 1 2 1 2 f . . . .
+        . . f f f 2 2 2 2 2 f f f . .
+        . f f 1 f 2 2 1 2 2 f 1 f f .
+        . f f f f 2 2 2 2 2 f f f f .
+        . f f 1 f 1 1 1 1 1 f 1 f f .
+        . f f f f 1 1 1 1 1 f f f f .
+        . f f f . f 1 1 1 f . f f f .
         . . f f . . f f f . . f f . .
     `
     const F1_MID_B = img`
-        . . . f f f f f f f f f . . .
-        . . . f 1 1 1 1 1 1 1 f . . .
-        . . f f f f 2 2 2 f f f f . .
-        . f f f . f 2 1 2 f . f f f .
-        . f 1 f . f 2 2 2 f . f 1 f .
-        . f f f . f 1 2 1 f . f f f .
-        . f 1 f . f 2 2 2 f . f 1 f .
-        . f f f . f 2 2 2 f . f f f .
-        . f 1 f . f 1 2 1 f . f 1 f .
-        . f f f . f 2 2 2 f . f f f .
-        . . f f . f 1 1 1 f . f f . .
+        . . . f f f f f f f f . . . .
+        . . . f 1 1 1 1 1 1 f . . . .
+        . . . . . f 2 2 2 f . . . . .
+        . . . . f 2 2 1 2 2 f . . . .
+        . . f f f 2 1 2 1 2 f f f . .
+        . f f 1 f 2 2 2 2 2 f 1 f f .
+        . f f f f 2 2 2 2 2 f f f f .
+        . f f 1 f 1 1 1 1 1 f 1 f f .
+        . f f f f 1 1 1 1 1 f f f f .
+        . f f f . f 1 1 1 f . f f f .
         . . f f . . f f f . . f f . .
     `
 
-    // FAR — 9x7
+    // FAR — 11x7
     const F1_FAR_A = img`
-        . f f f f f f f .
-        . f 1 1 1 1 1 f .
-        f f f 2 2 2 f f f
-        f 1 f 1 2 1 f 1 f
-        f f f 2 2 2 f f f
+        . . f f f f f . .
+        . . f 1 1 1 f . .
+        . . f 2 2 2 f . .
+        f f f 2 1 2 f f f
         f 1 f 2 2 2 f 1 f
-        . f . f 1 f . f .
+        f f f 1 1 1 f f f
+        . f f . . . f f .
     `
     const F1_FAR_B = img`
-        . f f f f f f f .
-        . f 1 1 1 1 1 f .
-        f f f 2 2 2 f f f
+        . . f f f f f . .
+        . . f 1 1 1 f . .
+        . . f 2 2 2 f . .
         f f f 1 2 1 f f f
         f 1 f 2 2 2 f 1 f
-        f f f 2 2 2 f f f
-        . f . f 1 f . f .
+        f f f 1 1 1 f f f
+        . f f . . . f f .
     `
 
     // Per-player tinted copies of each size and wheel-spin frame, built lazily.
