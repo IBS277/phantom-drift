@@ -17,7 +17,9 @@ namespace fpSplit {
     const C_SKY = 9, C_GRASS_L = 7
     const C_ROAD_L = 11, C_ROAD_D = 12, C_RUMBLE_A = 2, C_RUMBLE_B = 1, C_LINE = 1
     const C_RED = 2, C_YEL = 5, C_GRN = 6, C_OFF = 12, C_PANEL = 15
-    const CAR_COLORS = [2, 4, 8, 5]      // P1 red, P2 orange, P3 blue, P4 yellow
+    // Match MakeCode's standard player colours so the car colour equals the
+    // player's joystick/icon colour: P1 red, P2 blue, P3 orange, P4 green.
+    const CAR_COLORS = [2, 8, 4, 7]
 
     // ---- physics ----
     const MAX_SPEED = 64, ACCEL = 42, BRAKE = 80, ENGINE_BRAKE = 16, OFF_MAX = 24
