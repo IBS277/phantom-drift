@@ -29,6 +29,14 @@ namespace fpSplit {
     const STEER = 2.3, CENTRI = 1.6, STEER_EASE = 6
     const SEE = 240                      // metres of road visible ahead
 
+    // ---- weather (shared, changes during the race) ----
+    // 0 sunny, 1 rain (less grip), 2 fog (short view), 3 night (dark + lights).
+    const WX_SUN = 0, WX_RAIN = 1, WX_FOG = 2, WX_NIGHT = 3
+    const WX_NAMES = ["SUNNY", "RAIN", "FOG", "NIGHT"]
+    let weather = WX_SUN
+    let wxAnnounce = 0               // seconds left showing the "weather changed" banner
+    let wxLastLap = -1              // leader lap at last weather roll
+
     // ---- boost (Phase 2) ----
     const BOOST_SPEED = 96            // top speed while boosting (vs MAX_SPEED 64)
     const BOOST_MAX = 1.4            // seconds of boost when full
@@ -80,6 +88,8 @@ namespace fpSplit {
     let winner = -1
     let started = false
     let finishHandler: (winnerIndex: number) => void = null
+    let standings: number[] = []     // car indices, finishing order (podium)
+    let podiumT = 0                  // podium animation timer
 
     // ---- track select (Phase 4) ----
     // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
@@ -90,6 +100,17 @@ namespace fpSplit {
     let hostCurve = [0]              // the curve passed into run()
     let selTrack = 1                // default to MONACO on the picker
     let cpuCount = 0                // extra AI cars beyond human players (set on select)
+
+    // ---- pre-game menu (cursor over setting rows) ----
+    // rows: 0 players,1 track,2 cpu,3 laps,4 pit,5 difficulty,6 weather,7 START
+    const MENU_ROWS = 8
+    let menuRow = 0
+    let pitOn = false               // pit stops enabled?
+    let difficulty = 0              // 0 easy, 1 hard
+    let wxMode = 2                  // 0 off(sunny), 1 fixed, 2 dynamic
+    let wxFixed = 0                 // chosen weather when wxMode == fixed
+    const DIFF_NAMES = ["EASY", "HARD"]
+    const WXMODE_NAMES = ["OFF", "FIXED", "DYNAMIC"]
 
     // ---------------------------------------------------------------- helpers
     function bandOf(v: number): number {
@@ -123,6 +144,139 @@ namespace fpSplit {
     }
     // Total cars on track = human players + CPU rivals.
     function carCount(): number { return numPlayers + cpuCount }
+
+    // Change the value of the currently-highlighted menu row by dir (-1/+1).
+    function menuAdjust(dir: number) {
+        if (menuRow == 0) {                         // players 2..4
+            numPlayers = Math.max(2, Math.min(4, numPlayers + dir))
+            if (cpuCount > 4 - numPlayers) cpuCount = 4 - numPlayers
+        } else if (menuRow == 1) {                  // track
+            selTrack = (selTrack + dir + 4) % 4
+        } else if (menuRow == 2) {                  // cpu cars 0..(4-players)
+            const maxC = 4 - numPlayers
+            cpuCount = Math.max(0, Math.min(maxC, cpuCount + dir))
+        } else if (menuRow == 3) {                  // laps 1..9
+            lapsToWin = Math.max(1, Math.min(9, lapsToWin + dir))
+        } else if (menuRow == 4) {                  // pit stops on/off
+            pitOn = !pitOn
+        } else if (menuRow == 5) {                  // difficulty
+            difficulty = (difficulty + dir + 2) % 2
+        } else if (menuRow == 6) {                  // weather: OFF, FIXED x4, DYNAMIC
+            // combined index 0=off,1..4=fixed sun/rain/fog/night,5=dynamic
+            let wi = wxMode == 0 ? 0 : wxMode == 2 ? 5 : 1 + wxFixed
+            wi = (wi + dir + 6) % 6
+            if (wi == 0) { wxMode = 0 }
+            else if (wi == 5) { wxMode = 2 }
+            else { wxMode = 1; wxFixed = wi - 1 }
+        }
+        // row 7 (START) has no value to adjust
+    }
+
+    // Apply chosen settings and start the lights. Namespace-level (not nested in
+    // run) so MakeCode reliably binds it from the A-button handler.
+    function startRace() {
+        const chosen = selTrack <= 1 ? hostCurve : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
+        setTrack(chosen, segLen)
+        buildItems()
+        for (let k = 0; k < 4; k++) {
+            isCPU[k] = k >= numPlayers && k < numPlayers + cpuCount
+            pos[k] = -k * 3
+            spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
+            plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
+            boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
+        }
+        // weather mode: off => always sunny; fixed => chosen; dynamic => starts sunny, rolls each lap
+        weather = wxMode == 0 ? WX_SUN : wxMode == 1 ? wxFixed : WX_SUN
+        wxAnnounce = 0; wxLastLap = 0
+        finished = false; winner = -1
+        phase = PH_LIGHTS; lightsT = 0
+    }
+
+    // Draw one menu row: label + value, with a cursor and highlight when active.
+    function menuLine(target: Image, row: number, y: number, label: string, value: string) {
+        const active = menuRow == row
+        if (active) {
+            target.fillRect(8, y - 1, 144, 9, 1)
+            target.print(">", 10, y, C_GRN, image.font5)
+        }
+        const fg = active ? C_GRN : C_PANEL
+        target.print(label, 18, y, fg, image.font5)
+        target.print(value, 96, y, active ? C_YEL : 1, image.font5)
+    }
+    function drawMenu(target: Image) {
+        target.fill(C_SKY)
+        target.fillRect(2, 2, 156, 116, 0)
+        target.print("F1 SPLIT-SCREEN RACE", 24, 5, C_YEL, image.font5)
+        const wxLabel = wxMode == 1 ? WXMODE_NAMES[1] + ":" + WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
+        menuLine(target, 0, 16, "PLAYERS", "" + numPlayers)
+        menuLine(target, 1, 26, "TRACK", TRACK_NAMES[selTrack])
+        menuLine(target, 2, 36, "CPU CARS", "" + cpuCount)
+        menuLine(target, 3, 46, "LAPS", "" + lapsToWin)
+        menuLine(target, 4, 56, "PIT STOPS", pitOn ? "ON" : "OFF")
+        menuLine(target, 5, 66, "DIFFICULTY", DIFF_NAMES[difficulty])
+        menuLine(target, 6, 76, "WEATHER", wxLabel)
+        // START row
+        const startActive = menuRow == 7
+        target.fillRect(50, 90, 60, 12, startActive ? C_GRN : C_PANEL)
+        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
+        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 6, 108, 13, image.font5)
+    }
+
+    // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
+    // car colour and a tiny F1, confetti raining for the winner. podiumT animates.
+    function drawPodium(target: Image) {
+        target.fill(0)
+        target.fillRect(0, 0, 160, 22, C_PANEL)
+        target.print("RACE RESULTS", 46, 4, C_YEL, image.font8)
+        const winnerCar = standings.length > 0 ? standings[0] : winner
+        target.print("P" + (winnerCar + 1) + " WINS!", 52, 14, CAR_COLORS[winnerCar], image.font5)
+
+        // confetti (deterministic streaks animated by podiumT)
+        const tt = Math.floor(podiumT * 12)
+        for (let c = 0; c < 24; c++) {
+            const cx = (c * 37 + tt * 3) % 160
+            const cy = (c * 53 + tt * 5) % 96 + 22
+            target.setPixel(cx, cy, CAR_COLORS[c % 4])
+        }
+
+        // three podium blocks: heights 1st>2nd>3rd, order 2nd|1st|3rd
+        const slots = [1, 0, 2]               // which standings index sits in each x-slot
+        const bx = [40, 70, 100]              // left x of each block
+        const bh = [26, 36, 18]               // block heights for 2nd,1st,3rd
+        const baseY = 116
+        for (let s = 0; s < 3; s++) {
+            const idx = slots[s]
+            if (idx >= standings.length) continue
+            const car = standings[idx]
+            const x = bx[s], h = bh[s]
+            // block
+            target.fillRect(x, baseY - h, 20, h, C_PANEL)
+            target.drawRect(x, baseY - h, 20, h, 1)
+            target.print("" + (idx + 1), x + 8, baseY - h + 2, C_YEL, image.font5)
+            // a little car on top in the player's colour
+            const cy = baseY - h - 12
+            target.fillRect(x + 4, cy + 4, 12, 7, CAR_COLORS[car])   // body
+            target.fillRect(x + 2, cy + 5, 4, 5, 15)                  // L tyre
+            target.fillRect(x + 14, cy + 5, 4, 5, 15)                 // R tyre
+            target.fillRect(x + 5, cy + 1, 10, 2, 1)                  // wing
+            target.print("P" + (car + 1), x + 4, cy - 6, CAR_COLORS[car], image.font5)
+        }
+        target.print("PRESS RESET TO RACE AGAIN", 16, 119 - 6, 13, image.font5)
+    }
+
+    // --- weather: how much grip is lost (1 = full grip) ---
+    function wxGrip(): number {
+        return weather == WX_RAIN ? 0.62 : weather == WX_FOG ? 0.85 : weather == WX_NIGHT ? 0.9 : 1
+    }
+    // view distance in metres for the current weather (fog = short)
+    function wxSee(): number {
+        return weather == WX_FOG ? 110 : weather == WX_NIGHT ? 170 : SEE
+    }
+    // palette per weather: [sky, grass, roadLight, roadDark]
+    function wxSky(): number { return weather == WX_NIGHT ? 0 : weather == WX_RAIN ? 13 : weather == WX_FOG ? 1 : C_SKY }
+    function wxGrass(): number { return weather == WX_NIGHT ? 3 : weather == WX_RAIN ? 6 : C_GRASS_L }
+    function wxRoadL(): number { return weather == WX_NIGHT ? 12 : C_ROAD_L }
+    function wxRoadD(): number { return weather == WX_NIGHT ? 15 : C_ROAD_D }
     // Live race position (1 = leading) for player i, by total distance covered.
     function placeOf(i: number): number {
         let p = 1
@@ -351,29 +505,31 @@ namespace fpSplit {
         // visual lean: when steering, slide the whole road sideways a touch so
         // the turn reads as the car leaning into it (first-person "wheels turn").
         const lean = steerAng[i] * vw * 0.06
-        target.fillRect(ox, oy, vw, hor - oy, C_SKY)
+        const sky = wxSky(), grass = wxGrass(), rL = wxRoadL(), rD = wxRoadD()
+        target.fillRect(ox, oy, vw, hor - oy, sky)
 
         for (let y = hor; y < bot; y++) {
             const t = (y - hor) / (bot - hor)
             const roadW = t * hw
             const cx = ox + (vw >> 1) + cur[i] * (1 - t) * (1 - t) * bendScale - lat[i] * roadW - lean * t
             const band = bandOf(pos[i] * 0.05 + (1 - t) * 11)
-            const road = band ? C_ROAD_D : C_ROAD_L
+            const road = band ? rD : rL
             const rumble = band ? C_RUMBLE_A : C_RUMBLE_B
             const rw = roadW * 0.13 + 1
-            target.fillRect(ox, y, vw, 1, C_GRASS_L)
+            target.fillRect(ox, y, vw, 1, grass)
             clipH(target, cx - roadW - rw, cx + roadW + rw, y, rumble, ox, ox + vw)
             clipH(target, cx - roadW, cx + roadW, y, road, ox, ox + vw)
             if (band == 0 && roadW > 4) clipH(target, cx - 1, cx + 1, y, C_LINE, ox, ox + vw)
         }
 
         // the other cars (players + CPU) by relative track position
+        const see = wxSee()
         for (let j = 0; j < carCount(); j++) {
             if (j == i) continue
             let dA = (pos[j] - pos[i]) % lapLen
             if (dA < 0) dA += lapLen
-            if (dA <= 2 || dA >= SEE) continue
-            const tr = 1 - dA / SEE
+            if (dA <= 2 || dA >= see) continue
+            const tr = 1 - dA / see
             // road point for this distance, biased downward as the car gets
             // closer so its tyres sit on the road surface near the camera
             // instead of floating at the projected centreline.
@@ -396,8 +552,8 @@ namespace fpSplit {
             if (it.taken & (1 << i)) continue
             let dI = it.d - myLap
             if (dI < 0) dI += lapLen
-            if (dI <= 2 || dI >= SEE) continue
-            const tr = 1 - dI / SEE
+            if (dI <= 2 || dI >= see) continue
+            const tr = 1 - dI / see
             const roadY = hor + tr * (bot - hor)
             const yI = Math.round(roadY + tr * tr * (bot - roadY) * 0.25)
             const rwid = tr * hw
@@ -571,9 +727,11 @@ namespace fpSplit {
 
         cur[i] += (curveAt(pos[i] + 40) - cur[i]) * Math.min(1, dt * 2.5)
         pos[i] += spd[i] * dt
-        const mf = Math.abs(spd[i]) > 2 ? 1 : 0.6
+        const grip = wxGrip()
+        const mf = (Math.abs(spd[i]) > 2 ? 1 : 0.6) * grip
         lat[i] += sdisp[i] * STEER * dt * mf
-        lat[i] -= cur[i] * (spd[i] / MAX_SPEED) * CENTRI * dt
+        // less grip => the bend throws you wider (centrifugal divided by grip)
+        lat[i] -= cur[i] * (spd[i] / MAX_SPEED) * CENTRI * dt / grip
         if (lat[i] > 1.5) lat[i] = 1.5
         if (lat[i] < -1.5) lat[i] = -1.5
 
@@ -592,6 +750,15 @@ namespace fpSplit {
             if (lp >= lapsToWin && !finished) {
                 finished = true
                 winner = i
+                // final standings: all cars sorted by distance covered (desc)
+                standings = []
+                for (let k = 0; k < carCount(); k++) standings.push(k)
+                for (let a = 0; a < standings.length; a++)
+                    for (let b = a + 1; b < standings.length; b++)
+                        if (pos[standings[b]] > pos[standings[a]]) {
+                            const tmp = standings[a]; standings[a] = standings[b]; standings[b] = tmp
+                        }
+                podiumT = 0
                 phase = PH_DONE
                 if (finishHandler) finishHandler(winner)
             }
@@ -624,8 +791,11 @@ namespace fpSplit {
         // ease off on very sharp bends, otherwise full throttle
         aiBrake = false
         aiAccel = true
-        if (Math.abs(bend) > 1.1 && spd[i] > MAX_SPEED * 0.8) aiAccel = false
-        aiBoost = Math.abs(bend) < 0.3 && boost[i] > BOOST_MAX * 0.5
+        // hard difficulty: AI corners faster (lifts later) and boosts more freely
+        const liftSpeed = difficulty == 1 ? 0.92 : 0.78
+        const bendLimit = difficulty == 1 ? 1.3 : 1.05
+        if (Math.abs(bend) > bendLimit && spd[i] > MAX_SPEED * liftSpeed) aiAccel = false
+        aiBoost = Math.abs(bend) < (difficulty == 1 ? 0.45 : 0.3) && boost[i] > BOOST_MAX * (difficulty == 1 ? 0.3 : 0.5)
     }
 
     // ---------------------------------------------------------------- public API
@@ -666,25 +836,6 @@ namespace fpSplit {
         started = true
         if (curve && curve.length > 1) hostCurve = curve
 
-        // Apply the chosen track + CPU rivals and start the lights. Called when
-        // the host confirms on the select screen.
-        function startRace() {
-            const chosen = selTrack == 0 ? hostCurve : selTrack == 1 ? hostCurve
-                : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
-            // (MONACO reuses the host's Monaco-flavoured curve)
-            setTrack(chosen, segmentLength)
-            buildItems()
-            // seed CPU cars after the human players, spaced behind the line
-            for (let k = 0; k < 4; k++) {
-                isCPU[k] = k >= numPlayers && k < numPlayers + cpuCount
-                pos[k] = -k * 3
-                spd[k] = 0; lat[k] = 0; cur[k] = 0; sdisp[k] = 0; steerAng[k] = 0
-                plap[k] = 0; lapTime[k] = 0; bestLap[k] = 0
-                boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
-            }
-            phase = PH_LIGHTS; lightsT = 0
-        }
-
         // Enable MakeCode's online multiplayer hosting: referencing a
         // parts="multiplayer" method (onButtonEvent) on players 2-4 in reachable
         // code makes the compiler flag this game as multiplayer, so the player
@@ -697,22 +848,20 @@ namespace fpSplit {
 
         scene.setBackgroundColor(0)
 
+        // ---- pre-game menu navigation ----
+        // UP/DOWN move the cursor between setting rows; LEFT/RIGHT change the
+        // highlighted value; A starts the race from any row.
         controller.player1.up.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) numPlayers = Math.min(4, numPlayers + 1)
+            if (phase == PH_SELECT) menuRow = (menuRow + MENU_ROWS - 1) % MENU_ROWS
         })
         controller.player1.down.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) numPlayers = Math.max(2, numPlayers - 1)
+            if (phase == PH_SELECT) menuRow = (menuRow + 1) % MENU_ROWS
         })
-        // LEFT/RIGHT cycle the track on the select screen
         controller.player1.left.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) selTrack = (selTrack + 3) % 4
+            if (phase == PH_SELECT) menuAdjust(-1)
         })
         controller.player1.right.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) selTrack = (selTrack + 1) % 4
-        })
-        // B toggles how many CPU rivals fill the grid (0..up to 4-humans)
-        controller.player1.B.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) cpuCount = (cpuCount + 1) % (4 - numPlayers + 1)
+            if (phase == PH_SELECT) menuAdjust(1)
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) startRace()
@@ -720,18 +869,11 @@ namespace fpSplit {
 
         scene.createRenderable(0, function (target: Image) {
             if (phase == PH_SELECT) {
-                target.fill(C_GRASS_L)
-                target.fillRect(4, 14, 152, 96, C_PANEL)
-                target.print("F1 SPLIT-SCREEN RACE", 22, 18, 1, image.font5)
-                target.print("PLAYERS: " + numPlayers, 12, 32, 1, image.font5)
-                target.print("(UP/DOWN)", 92, 32, C_YEL, image.font5)
-                target.print("CPU CARS: " + cpuCount, 12, 44, 1, image.font5)
-                target.print("(B)", 110, 44, C_YEL, image.font5)
-                target.print("TRACK: " + TRACK_NAMES[selTrack], 12, 56, C_GRN, image.font5)
-                target.print("(LEFT/RIGHT)", 84, 56, C_YEL, image.font5)
-                target.print("BOOST = B   DODGE OIL", 18, 76, 1, image.font5)
-                target.print("GRAB YELLOW = SPEED", 22, 86, 1, image.font5)
-                target.print("A = START", 54, 98, C_GRN, image.font5)
+                drawMenu(target)
+                return
+            }
+            if (phase == PH_DONE) {
+                drawPodium(target)
                 return
             }
             // LIGHTS or RACE: split views (+ countdown lights overlaid in LIGHTS)
@@ -742,14 +884,20 @@ namespace fpSplit {
                 else { ox = (i % 2) * 80; oy = i < 2 ? 0 : 60; vw = 80; vh = 60 }
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
-                if (phase == PH_DONE) drawResult(target, ox, oy, vw, vh, i)
             }
             target.fillRect(0, 59, 160, 2, 15)
             if (numPlayers > 2) target.fillRect(79, 0, 2, 120, 15)
+            // weather-change banner across the centre of the screen
+            if (wxAnnounce > 0 && phase == PH_RACE) {
+                target.fillRect(30, 54, 100, 12, 0)
+                target.drawRect(30, 54, 100, 12, C_YEL)
+                target.print("WEATHER: " + WX_NAMES[weather], 36, 57, C_YEL, image.font5)
+            }
         })
 
         game.onUpdate(function () {
             const dt = game.eventContext().deltaTime
+            if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
                 lightsT += dt
                 if (lightsT >= 2.7) phase = PH_RACE
@@ -757,6 +905,20 @@ namespace fpSplit {
             }
             if (phase != PH_RACE || finished) return
             for (let i = 0; i < numPlayers + cpuCount; i++) drive(i, dt)
+
+            // shared dynamic weather: each time the leader completes a lap, shift
+            // the weather (sun -> rain -> fog -> night -> ...) for everyone.
+            if (wxAnnounce > 0) wxAnnounce -= dt
+            let leadLap = 0
+            for (let i = 0; i < numPlayers + cpuCount; i++)
+                leadLap = Math.max(leadLap, Math.floor(pos[i] / lapLen))
+            if (wxMode == 2 && leadLap > wxLastLap) {   // only in DYNAMIC mode
+                wxLastLap = leadLap
+                if (leadLap > 0) {           // don't change on the very first lap
+                    weather = (weather + 1) % 4
+                    wxAnnounce = 2.2
+                }
+            }
         })
     }
 }
