@@ -83,6 +83,8 @@ namespace fpSplit {
     let wear = [0, 0, 0, 0]         // tyre wear 0..1 (1 = fully worn)
     let tyre = [1, 1, 1, 1]         // current tyre compound (0 soft,1 med,2 hard)
     let pitting = [false, false, false, false]  // currently in a pit stop?
+    let pitDriving = [false, false, false, false]   // driving down the pit lane (pre-menu)?
+    let pitDriveT = [0, 0, 0, 0]    // pit-lane drive-in timer
     let pitChoosing = [false, false, false, false]  // in the tyre-choice menu?
     let pitSel = [1, 1, 1, 1]       // highlighted tyre in the pit menu
     let pitProg = [0, 0, 0, 0]      // pit-stop service progress 0..1
@@ -99,11 +101,13 @@ namespace fpSplit {
 
     // ---- tyre compounds (chosen in the pit) ----
     // 0 SOFT (fast, wears quick) · 1 MEDIUM (balanced) · 2 HARD (slow, lasts long)
-    const TYRE_NAMES = ["SOFT", "MEDIUM", "HARD"]
-    const TYRE_COL = [2, 5, 1]                  // red, yellow, white dots in the HUD/menu
-    const TYRE_WEAR_MUL = [1.7, 1.0, 0.55]      // how fast each compound wears
-    const TYRE_SPEED_MUL = [1.06, 1.0, 0.95]    // top-speed bonus/penalty per compound
-    const TYRE_GRIP_MUL = [1.12, 1.0, 0.92]     // cornering grip per compound
+    // 3 WET (great grip in rain, slow in the dry)
+    const NTYRE = 4
+    const TYRE_NAMES = ["SOFT", "MEDIUM", "HARD", "WET"]
+    const TYRE_COL = [2, 5, 1, 8]               // red, yellow, white, blue dots
+    const TYRE_WEAR_MUL = [1.7, 1.0, 0.55, 1.1] // how fast each compound wears
+    const TYRE_SPEED_MUL = [1.06, 1.0, 0.95, 0.9]    // top-speed per compound (wet is slow)
+    const TYRE_GRIP_MUL = [1.12, 1.0, 0.92, 0.95]    // base (dry) grip per compound
 
     // ---- game state ----
     const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
@@ -226,6 +230,7 @@ namespace fpSplit {
             boost[k] = BOOST_MAX; boosting[k] = false; spinT[k] = 0; boostFx[k] = 0
             wear[k] = 0; pitting[k] = false; pitProg[k] = 0; pitDone[k] = 0; pitPenaltyShown[k] = 0
             tyre[k] = 1; pitChoosing[k] = false; pitSel[k] = 1   // start on mediums
+            pitDriving[k] = false; pitDriveT[k] = 0
         }
         // weather mode: off => always sunny; fixed => chosen; dynamic => starts sunny, rolls each lap
         weather = wxMode == 0 ? WX_SUN : wxMode == 1 ? wxFixed : WX_SUN
@@ -774,34 +779,35 @@ namespace fpSplit {
         target.print(ord, px + 2, py + 1, pcol, image.font5)
     }
 
-    // Tyre-choice menu shown when a player has driven into the pit. Three big
-    // tyre discs (Soft/Medium/Hard); LEFT/RIGHT highlights one, A fits it.
+    // Tyre-choice menu shown when a player has parked in the pit box. Four tyre
+    // discs (Soft/Medium/Hard/Wet); LEFT/RIGHT highlights one, A fits it.
     function drawTyreMenu(target: Image, ox: number, oy: number, vw: number, vh: number, i: number) {
         const cx = ox + (vw >> 1), cy = oy + (vh >> 1)
         target.fillRect(ox + 4, oy + 4, vw - 8, vh - 8, 0)
         target.drawRect(ox + 4, oy + 4, vw - 8, vh - 8, C_YEL)
         target.print("CHOOSE TYRES", cx - 24, oy + 7, C_YEL, image.font5)
-        // three tyres spaced across the middle
-        const xs = [cx - 30, cx, cx + 30]
-        for (let t = 0; t < 3; t++) {
-            const tx = xs[t], ty = cy
+        // four tyres spaced across the middle (tighter on narrow 4P panels)
+        const gap = vw >= 120 ? 22 : 17
+        const startX = cx - gap * (NTYRE - 1) / 2
+        for (let t = 0; t < NTYRE; t++) {
+            const tx = Math.round(startX + t * gap), ty = cy
             const sel = pitSel[i] == t
-            const r = sel ? 9 : 7
+            const r = sel ? 8 : 6
             // tyre = black disc with a coloured rim showing the compound
             fillDisc(target, tx, ty, r, 15)
-            fillDisc(target, tx, ty, Math.max(2, r - 3), TYRE_COL[t])
-            fillDisc(target, tx, ty, 2, 15)
+            fillDisc(target, tx, ty, Math.max(2, r - 2), TYRE_COL[t])
+            fillDisc(target, tx, ty, 1, 15)
             if (sel) {
-                // highlight ring + name + a bouncing pointer
                 target.drawRect(tx - r - 2, ty - r - 2, 2 * r + 4, 2 * r + 4, C_GRN)
-                target.print(TYRE_NAMES[t], cx - TYRE_NAMES[t].length * 2, ty + r + 4, C_GRN, image.font5)
+                target.print(TYRE_NAMES[t], cx - TYRE_NAMES[t].length * 2, ty + r + 5, C_GRN, image.font5)
                 const arrowY = ty - r - 6 - (Math.floor(clock * 6) & 1)
                 target.print("v", tx - 1, arrowY, C_GRN, image.font5)
             }
         }
-        // hint
-        if (!isCPU[i]) target.print("L/R PICK  A FIT", cx - 26, oy + vh - 8, 1, image.font5)
-        else target.print("FITTING...", cx - 18, oy + vh - 8, 1, image.font5)
+        // hint — suggest WET when it's raining
+        if (isCPU[i]) target.print("FITTING...", cx - 18, oy + vh - 8, 1, image.font5)
+        else if (weather == WX_RAIN) target.print("RAIN! TRY WET", cx - 26, oy + vh - 8, 8, image.font5)
+        else target.print("L/R PICK  A FIT", cx - 26, oy + vh - 8, 1, image.font5)
     }
 
     // Animated F1 pit-stop scene, staged by pitProg (0..1):
@@ -999,14 +1005,31 @@ namespace fpSplit {
             return
         }
 
+        // --- pit: DRIVE-IN (peel off onto the pit lane, then park) ---
+        if (pitDriving[i]) {
+            pitDriveT[i] += dt
+            // crawl forward at the pit limiter while sliding into the lane
+            spd[i] = Math.min(spd[i] + ACCEL * dt, MAX_SPEED * 0.3)
+            // slowing to a stop over the last third of the drive-in
+            if (pitDriveT[i] > 0.9) spd[i] = Math.max(0, spd[i] - spd[i] * 4 * dt)
+            pos[i] += spd[i] * dt
+            lat[i] += (1.2 - lat[i]) * Math.min(1, dt * 4)   // ease over to the pit lane
+            steerAng[i] = 0.6                                  // wheels turned into the lane
+            if (pitDriveT[i] >= 1.3) {                         // arrived → open tyre menu
+                pitDriving[i] = false
+                pitChoosing[i] = true; pitProg[i] = 0; pitSel[i] = tyre[i]
+            }
+            return
+        }
+
         // --- pit: TYRE CHOICE (car parked in the box, menu shown) ---
         if (pitChoosing[i]) {
             spd[i] = Math.max(0, spd[i] - spd[i] * 5 * dt)   // brake to a stop
             lat[i] = 1.15
             if (isCPU[i]) {
-                // CPU picks a smart tyre by laps remaining, then confirms
+                // CPU: WET in the rain, else by laps remaining (soft late, hard early)
                 const lapsLeft = lapsToWin - Math.floor(pos[i] / lapLen)
-                pitSel[i] = lapsLeft <= 1 ? 0 : lapsLeft >= 3 ? 2 : 1
+                pitSel[i] = weather == WX_RAIN ? 3 : lapsLeft <= 1 ? 0 : lapsLeft >= 3 ? 2 : 1
                 // confirm shortly after arriving
                 pitProg[i] += dt
                 if (pitProg[i] > 0.5) confirmTyre(i)
@@ -1040,8 +1063,8 @@ namespace fpSplit {
                 else enter = isCPU[i] ? wear[i] > 0.8 : lat[i] > 0.7   // MANUAL: steer right
             }
             if (enter) {
-                // drive INTO the pit and open the tyre-choice menu
-                pitChoosing[i] = true; pitProg[i] = 0; pitSel[i] = tyre[i]
+                // begin the visible drive-in down the pit lane (then the menu)
+                pitDriving[i] = true; pitDriveT[i] = 0
                 pitDone[i] |= (1 << (curLap & 7))
                 lapTime[i] += PIT_PENALTY               // pitting costs time (strategy)
                 pitPenaltyShown[i] = 1.8
@@ -1083,7 +1106,10 @@ namespace fpSplit {
         // can't reverse past the start line — clamp to the grid so laps never go negative
         if (pos[i] < 0) { pos[i] = 0; if (spd[i] < 0) spd[i] = 0 }
         // grip = weather grip, reduced by wear, scaled by the chosen compound
-        const grip = wxGrip() * (pitMode > 0 ? (1 - WEAR_GRIP * wear[i]) * TYRE_GRIP_MUL[tyre[i]] : 1)
+        // WET tyres claw back most of the rain grip loss; dry tyres suffer in rain.
+        let tyreGrip = TYRE_GRIP_MUL[tyre[i]]
+        if (pitMode > 0 && tyre[i] == 3 && weather == WX_RAIN) tyreGrip = 1.5   // wet in rain = great
+        const grip = wxGrip() * (pitMode > 0 ? (1 - WEAR_GRIP * wear[i]) * tyreGrip : 1)
         const mf = (Math.abs(spd[i]) > 2 ? 1 : 0.6) * grip
         lat[i] += sdisp[i] * STEER * dt * mf
         // less grip => the bend throws you wider (centrifugal divided by grip)
@@ -1215,11 +1241,11 @@ namespace fpSplit {
         })
         controller.player1.left.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) menuAdjust(-1)
-            else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + 2) % 3   // pick tyre
+            else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + NTYRE - 1) % NTYRE   // pick tyre
         })
         controller.player1.right.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) menuAdjust(1)
-            else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + 1) % 3
+            else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + 1) % NTYRE
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
             if (phase == PH_SELECT) startRace()
@@ -1227,14 +1253,14 @@ namespace fpSplit {
         })
         // players 2-4: tyre menu (left/right pick, A confirm). Also keeps the
         // multiplayer host button enabled via player2-4 event references.
-        controller.player2.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[1]) pitSel[1] = (pitSel[1] + 2) % 3 })
-        controller.player2.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[1]) pitSel[1] = (pitSel[1] + 1) % 3 })
+        controller.player2.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[1]) pitSel[1] = (pitSel[1] + NTYRE - 1) % NTYRE })
+        controller.player2.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[1]) pitSel[1] = (pitSel[1] + 1) % NTYRE })
         controller.player2.A.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[1]) confirmTyre(1) })
-        controller.player3.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[2]) pitSel[2] = (pitSel[2] + 2) % 3 })
-        controller.player3.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[2]) pitSel[2] = (pitSel[2] + 1) % 3 })
+        controller.player3.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[2]) pitSel[2] = (pitSel[2] + NTYRE - 1) % NTYRE })
+        controller.player3.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[2]) pitSel[2] = (pitSel[2] + 1) % NTYRE })
         controller.player3.A.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[2]) confirmTyre(2) })
-        controller.player4.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) pitSel[3] = (pitSel[3] + 2) % 3 })
-        controller.player4.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) pitSel[3] = (pitSel[3] + 1) % 3 })
+        controller.player4.left.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) pitSel[3] = (pitSel[3] + NTYRE - 1) % NTYRE })
+        controller.player4.right.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) pitSel[3] = (pitSel[3] + 1) % NTYRE })
         controller.player4.A.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) confirmTyre(3) })
 
         scene.createRenderable(0, function (target: Image) {
@@ -1254,7 +1280,13 @@ namespace fpSplit {
                 else { ox = (i % 2) * 80; oy = i < 2 ? 0 : 60; vw = 80; vh = 60 }
                 renderView(target, ox, oy, vw, vh, i)
                 if (phase == PH_LIGHTS) drawViewLights(target, ox, oy, vw)
-                if (phase == PH_RACE && pitChoosing[i]) drawTyreMenu(target, ox, oy, vw, vh, i)
+                if (phase == PH_RACE && pitDriving[i]) {
+                    // banner while peeling into the pit lane
+                    const bx = ox + (vw >> 1) - 32, by2 = oy + 12
+                    target.fillRect(bx, by2, 66, 9, 0)
+                    target.print("ENTERING PITS", bx + 2, by2 + 1, 8, image.font5)
+                }
+                else if (phase == PH_RACE && pitChoosing[i]) drawTyreMenu(target, ox, oy, vw, vh, i)
                 else if (phase == PH_RACE && pitting[i]) drawPit(target, ox, oy, vw, vh, i)
                 else if (phase == PH_RACE && pitMode == 2 && canPit[i] && !isCPU[i]) {
                     // MANUAL: flashing prompt to steer right into the pit lane
