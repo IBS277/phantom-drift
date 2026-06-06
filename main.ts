@@ -135,7 +135,7 @@ namespace fpSplit {
 
     // ---- pre-game menu (cursor over setting rows) ----
     // rows: 0 players,1 track,2 cpu,3 laps,4 pit,5 difficulty,6 weather,7 START
-    const MENU_ROWS = 8
+    const MENU_ROWS = 7
     let menuRow = 0
     let pitMode = 0                 // 0 OFF, 1 AUTO (pit when worn), 2 MANUAL (steer into pit lane)
     const PITMODE_NAMES = ["OFF", "AUTO", "MANUAL"]
@@ -182,19 +182,15 @@ namespace fpSplit {
     function menuAdjust(dir: number) {
         if (menuRow == 0) {                         // players 2..4
             numPlayers = Math.max(2, Math.min(4, numPlayers + dir))
-            if (cpuCount > 4 - numPlayers) cpuCount = 4 - numPlayers
         } else if (menuRow == 1) {                  // track
             selTrack = (selTrack + dir + 4) % 4
-        } else if (menuRow == 2) {                  // cpu cars 0..(4-players)
-            const maxC = 4 - numPlayers
-            cpuCount = Math.max(0, Math.min(maxC, cpuCount + dir))
-        } else if (menuRow == 3) {                  // laps 1..9
+        } else if (menuRow == 2) {                  // laps 1..9
             lapsToWin = Math.max(1, Math.min(9, lapsToWin + dir))
-        } else if (menuRow == 4) {                  // pit stops off/auto/manual
+        } else if (menuRow == 3) {                  // pit stops off/auto/manual
             pitMode = (pitMode + dir + 3) % 3
-        } else if (menuRow == 5) {                  // difficulty
+        } else if (menuRow == 4) {                  // difficulty
             difficulty = (difficulty + dir + 2) % 2
-        } else if (menuRow == 6) {                  // weather: OFF, FIXED x4, DYNAMIC
+        } else if (menuRow == 5) {                  // weather: OFF, FIXED x4, DYNAMIC
             // combined index 0=off,1..4=fixed sun/rain/fog/night,5=dynamic
             let wi = wxMode == 0 ? 0 : wxMode == 2 ? 5 : 1 + wxFixed
             wi = (wi + dir + 6) % 6
@@ -258,17 +254,16 @@ namespace fpSplit {
         target.fillRect(2, 2, 156, 116, 0)
         target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
         const wxLabel = wxMode == 1 ? WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
-        menuLine(target, 0, 15, "PLAYERS", "" + numPlayers)
-        menuLine(target, 1, 25, "TRACK", TRACK_NAMES[selTrack])
-        menuLine(target, 2, 35, "CPU CARS", "" + cpuCount)
-        menuLine(target, 3, 45, "LAPS", "" + lapsToWin)
-        menuLine(target, 4, 55, "PIT STOPS", PITMODE_NAMES[pitMode])
-        menuLine(target, 5, 65, "DIFFICULTY", DIFF_NAMES[difficulty])
-        menuLine(target, 6, 75, "WEATHER", wxLabel)
+        menuLine(target, 0, 16, "PLAYERS", "" + numPlayers)
+        menuLine(target, 1, 28, "TRACK", TRACK_NAMES[selTrack])
+        menuLine(target, 2, 40, "LAPS", "" + lapsToWin)
+        menuLine(target, 3, 52, "PIT STOPS", PITMODE_NAMES[pitMode])
+        menuLine(target, 4, 64, "DIFFICULTY", DIFF_NAMES[difficulty])
+        menuLine(target, 5, 76, "WEATHER", wxLabel)
         // START row
-        const startActive = menuRow == 7
-        target.fillRect(50, 88, 60, 11, startActive ? 6 : C_PANEL)
-        target.print("> START <", 56, 91, startActive ? 0 : 1, image.font5)
+        const startActive = menuRow == 6
+        target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
+        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
         target.print("UP/DN MOVE  L/R CHANGE  A=GO", 8, 110, 1, image.font5)
     }
 
