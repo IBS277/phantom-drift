@@ -9,6 +9,37 @@
 //
 //  This is JavaScript-only (the API takes arrays), like riknoll's split-screen.
 // =============================================================================
+// Readable settings used by the simple fpSplit API (set in your main.ts).
+enum WeatherMode {
+    //% block="off (always sunny)"
+    Off = 0,
+    //% block="always sunny"
+    Sunny = 1,
+    //% block="always rain"
+    Rain = 2,
+    //% block="always fog"
+    Fog = 3,
+    //% block="always night"
+    Night = 4,
+    //% block="dynamic (changes each lap)"
+    Dynamic = 5
+}
+enum PitMode {
+    //% block="off"
+    Off = 0,
+    //% block="auto"
+    Auto = 1,
+    //% block="manual"
+    Manual = 2
+}
+enum RaceDifficulty {
+    //% block="easy"
+    Easy = 0,
+    //% block="hard"
+    Hard = 1
+}
+
+//% color="#d83b3b" weight=100 icon="" block="Racing"
 namespace fpSplit {
     // ---- screen ----
     const W = 160, H = 120
@@ -211,7 +242,7 @@ namespace fpSplit {
         pitProg[i] = 0
     }
 
-    function startRace() {
+    function beginRaceFromMenu() {
         // CUSTOM = the curve the host passed to run(); others are presets.
         const chosen = selTrack == 0 ? hostCurve : selTrack == 1 ? TRACK_MONACO
             : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
@@ -1242,12 +1273,8 @@ namespace fpSplit {
         lapLen = trackCurve.length * segLen
     }
 
-    /** Set how many laps win the race. */
-    export function setLaps(laps: number) {
-        lapsToWin = laps
-    }
-
-    /** Register a callback fired when a player finishes (gets the winner index 0-3). */
+    /** Register a callback fired when a player finishes (gets the winner index 0-3).
+     * (Low-level; onWin() gives a friendlier 1-based player number.) */
     export function onFinish(handler: (winnerIndex: number) => void) {
         finishHandler = handler
     }
@@ -1257,9 +1284,59 @@ namespace fpSplit {
         return Math.min(Math.floor(pos[playerIndex] / lapLen) + 1, lapsToWin)
     }
 
+    // ============================================================ simple API
+    // These set the DEFAULTS shown on the in-game setup menu. Players can still
+    // change them on the menu before the race starts. Call them in your main.ts
+    // before startRace(), e.g.  fpSplit.setLaps(3).
+
+    /** Set the default number of laps (1–9). */
+    //% blockId=fpsplit_set_laps block="set laps to %laps"
+    //% laps.min=1 laps.max=9 laps.defl=3
+    export function setLaps(laps: number) {
+        lapsToWin = Math.max(1, Math.min(9, laps))
+    }
+
+    /** Set the default weather. */
+    //% blockId=fpsplit_set_weather block="set weather to %mode"
+    export function setWeather(mode: WeatherMode) {
+        if (mode == WeatherMode.Off) { wxMode = 0 }
+        else if (mode == WeatherMode.Dynamic) { wxMode = 2 }
+        else { wxMode = 1; wxFixed = mode - 1 }   // Sunny..Night -> wxFixed 0..3
+    }
+
+    /** Set the default pit-stop mode. */
+    //% blockId=fpsplit_set_pit block="set pit stops to %mode"
+    export function setPitStops(mode: PitMode) {
+        pitMode = mode
+    }
+
+    /** Set the default CPU difficulty. */
+    //% blockId=fpsplit_set_diff block="set difficulty to %level"
+    export function setDifficulty(level: RaceDifficulty) {
+        difficulty = level
+    }
+
+    /** Run a function when a player wins (gets the winning player number 1–4). */
+    //% blockId=fpsplit_on_win block="on player win"
+    //% draggableParameters
+    export function onWin(handler: (winner: number) => void) {
+        // wrap so the public callback receives a 1-based player number
+        finishHandler = function (idx: number) { handler(idx + 1) }
+    }
+
+    /**
+     * Start the race on the given track. Shows the setup menu (pre-filled with
+     * any defaults you set), then the lights, then the split-screen race.
+     * The track is a list of corners: 0 = straight, + = right, - = left.
+     */
+    //% blockId=fpsplit_start block="start race on track %track"
+    export function startRace(track: number[]) {
+        run(track, 46, lapsToWin)
+    }
+
     /**
      * Start the whole experience: player picker → start lights → split-screen
-     * first-person race. Call once.
+     * first-person race. Call once. (Low-level; startRace() is simpler.)
      */
     export function run(curve: number[], segmentLength: number, laps: number) {
         setTrack(curve, segmentLength)
@@ -1298,7 +1375,7 @@ namespace fpSplit {
             else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + 1) % NTYRE
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) startRace()
+            if (phase == PH_SELECT) beginRaceFromMenu()
             else if (pitChoosing[0]) confirmTyre(0)
         })
         // players 2-4: tyre menu (left/right pick, A confirm). Also keeps the
