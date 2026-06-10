@@ -165,7 +165,29 @@ namespace fpSplit {
     // run(); 1-3 are presets. selTrack picks one on the select screen.
     const TRACK_NAMES = ["CUSTOM", "MONACO", "OVAL", "TWISTY"]
     // MONACO: a tight street-circuit feel (hairpins + chicanes).
-    const TRACK_MONACO = [0, 0, 0.5, 0.4, 0, 0, -0.6, -0.5, 0.5, 1.5, 1.7, 0.5, 0, -0.3, 0.8, -0.8, -0.6, 0.6, 1.0, 0.5, 0, 0]
+    // Real Monaco corner sequence (one lap): start straight, Ste Devote (sharp
+    // right), Beau Rivage climb, Massenet (left), Casino, Mirabeau (right),
+    // FAIRMONT HAIRPIN (very tight right), Portier, tunnel, Nouvelle Chicane
+    // (right-left), Tabac (left), Swimming Pool (left-right-left), Rascasse
+    // (tight right), Anthony Noghes (right), back to the line.
+    const TRACK_MONACO = [
+        0, 0, 0,           // start / finish straight
+        1.2, 1.0,          // Ste Devote (sharp right)
+        0, 0,              // Beau Rivage climb
+        -0.8, -0.6,        // Massenet (left)
+        0.5,               // Casino (right)
+        0, 0,              // Casino straight
+        0.9,               // Mirabeau (right)
+        1.7, 1.8, 1.6,     // FAIRMONT HAIRPIN (very tight right)
+        0.6,               // Mirabeau Bas / Portier
+        0, 0,              // tunnel
+        0.6, -0.7,         // Nouvelle Chicane (right then left)
+        -0.8,              // Tabac (left)
+        -0.5, 0.7, -0.6,   // Swimming Pool (left-right-left)
+        1.3,               // La Rascasse (tight right)
+        0.8,               // Anthony Noghes (right)
+        0, 0               // run to the line
+    ]
     const TRACK_OVAL = [0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0]
     const TRACK_TWISTY = [0, 0.9, -0.9, 0.8, -1.1, 1.2, -0.7, 0.6, -1.3, 1.0, -0.8, 0.5, -0.6, 1.1, -1.0, 0, 0]
     let hostCurve = [0]              // the curve passed into run() (= CUSTOM)
@@ -288,12 +310,23 @@ namespace fpSplit {
         target.print(label, 16, y, labCol, image.font5)
         target.print(value, 96, y, valCol, image.font5)
     }
-    // Title-screen track outline (a Monaco-style circuit drawn as connected dots).
-    // Points are hand-placed in a 0..1 box; scaled/centred on screen.
+    // Title-screen Monaco circuit outline (traced from the real track map):
+    // a low tail at bottom-left (Rascasse/Swimming Pool), a long sweep across the
+    // middle, and the tight start/finish + Ste Devote cluster at the top-right.
+    // Points are (x,y) in a ~140x84 box; scaled/centred on screen.
     const TITLE_TRACK = [
-        16, 70, 14, 50, 22, 38, 40, 36, 50, 28, 58, 16, 72, 14, 80, 24,
-        78, 38, 92, 44, 110, 40, 124, 46, 130, 60, 120, 70, 104, 70, 96, 60,
-        84, 64, 74, 78, 58, 80, 46, 74, 34, 80, 22, 78
+        // bottom-left tail (Rascasse / Noghes hairpin area)
+        44, 82, 36, 80, 40, 70, 50, 66, 46, 56,
+        // up the left into the long middle sweep
+        38, 50, 44, 42, 56, 44, 64, 52, 76, 50,
+        // dip down (Mirabeau/Portier) then the big right curve
+        84, 56, 92, 52, 98, 44, 92, 38, 96, 30,
+        // top-right cluster: start/finish straight + Ste Devote kink
+        108, 26, 122, 28, 132, 22, 128, 14, 118, 16,
+        112, 24, 104, 22, 100, 32, 90, 30,
+        // back down through Casino/Massenet to the tail
+        82, 38, 72, 40, 64, 36, 56, 42, 50, 54,
+        56, 64, 50, 74
     ]
     // Opening title splash. Text comes from fpSplit.setTitle(...) in the game's
     // main.ts. Single-colour background with a Monaco track outline in the centre.
@@ -322,12 +355,11 @@ namespace fpSplit {
         if (titleSchool.length > 0)
             target.print(titleSchool, leftX, 104, 8, image.font5)                   // blue
 
-        // blinking "PRESS A TO CONTINUE" on a bar, in the tiny font
-        if ((Math.floor(titleT * 2) & 1) == 0) {
+        // "PRESS A TO CONTINUE" — full-width black bar at the bottom, centred text.
+        target.fillRect(0, 111, 160, 9, 0)                 // full-width black bar
+        if ((Math.floor(titleT * 2) & 1) == 0) {           // gentle blink of the text only
             const m = "PRESS A TO CONTINUE"
-            const w = m.length * 4
-            target.fillRect(80 - (w >> 1) - 3, 112, w + 6, 8, 0)       // bar
-            target.print(m, 80 - (w >> 1), 113, C_SKY, image.font5)
+            target.print(m, 80 - m.length * 2, 113, C_SKY, image.font5)   // centred
         }
     }
 
@@ -343,9 +375,12 @@ namespace fpSplit {
         menuLine(target, 4, 64, "DIFFICULTY", DIFF_NAMES[difficulty])
         menuLine(target, 5, 76, "WEATHER", wxLabel)
         const startActive = menuRow == 6
-        target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
-        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
-        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 4, 112, 1, image.font5)
+        target.fillRect(50, 88, 60, 11, startActive ? 6 : C_PANEL)
+        target.print("> START <", 56, 91, startActive ? 0 : 1, image.font5)
+        // controls hint on TWO centred lines so nothing is cut off
+        const h1 = "UP/DN MOVE   L/R CHANGE"
+        target.print(h1, 80 - h1.length * 2, 105, 1, image.font5)
+        target.print("A = GO", 80 - 6 * 2, 113, C_GRN, image.font5)
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
@@ -864,23 +899,23 @@ namespace fpSplit {
         // line 1: P# L#/total
         target.fillRect(ox + 1, oy + 1, 46, 7, C_PANEL)
         target.print("P" + (i + 1) + " L" + lapNum + "/" + lapsToWin, ox + 2, oy + 1, col, image.font5)
-        // labelled bars: S(peed) / B(oost) / T(yres). Labels sit left of each bar.
-        const lblX = ox + 2, barX = ox + 8
-        const barW = Math.min(44, vw - 10)
-        // S = speed
+        // labelled bars: S(peed) / B(oost) / T(yres) — thinner + shorter now.
+        const lblX = ox + 2, barX = ox + 7
+        const barW = Math.min(30, vw - 10)        // shorter (was 44)
+        // S = speed  (each bar is 3px tall: 1 frame + 1 fill)
         const sy = oy + 9
         target.print("S", lblX, sy - 1, 1, image.font5)
-        target.drawRect(barX, sy, barW, 4, C_PANEL)
+        target.drawRect(barX, sy, barW, 3, C_PANEL)
         const frac = Math.max(0, Math.min(1, spd[i] / MAX_SPEED))
         const fillW = Math.round((barW - 2) * frac)
-        if (fillW > 0) target.fillRect(barX + 1, sy + 1, fillW, 2, (boosting[i] || boostFx[i] > 0) ? C_GRN : frac > 0.8 ? C_RED : col)
-        // B = boost
-        const by = sy + 5
+        if (fillW > 0) target.fillRect(barX + 1, sy + 1, fillW, 1, (boosting[i] || boostFx[i] > 0) ? 8 : frac > 0.8 ? C_RED : col)
+        // B = boost  (blue when charging, cyan when boosting — no more yellow)
+        const by = sy + 4
         target.print("B", lblX, by - 1, 1, image.font5)
         target.drawRect(barX, by, barW, 3, C_PANEL)
         const bfrac = Math.max(0, Math.min(1, boost[i] / BOOST_MAX))
         const bw = Math.round((barW - 2) * bfrac)
-        if (bw > 0) target.fillRect(barX + 1, by + 1, bw, 1, boosting[i] ? C_YEL : C_GRN)
+        if (bw > 0) target.fillRect(barX + 1, by + 1, bw, 1, boosting[i] ? 9 : 8)
         // T = tyres (only when pit stops enabled)
         let nextY = by + 4
         if (pitMode > 0) {
@@ -890,8 +925,7 @@ namespace fpSplit {
             const ww = Math.round((barW - 2) * (1 - wear[i]))
             const wcol = wear[i] > 0.7 ? C_RED : wear[i] > 0.4 ? C_YEL : C_GRN
             if (ww > 0) target.fillRect(barX + 1, wy + 1, ww, 1, wcol)
-            // current tyre-compound dot at the end of the bar
-            fillDisc(target, barX + barW + 4, wy + 1, 2, TYRE_COL[tyre[i]])
+            fillDisc(target, barX + barW + 3, wy + 1, 2, TYRE_COL[tyre[i]])
             nextY = wy + 4
         }
         // current lap time stays under the bars; best lap moves to bottom-left
@@ -1109,6 +1143,42 @@ namespace fpSplit {
             const bl = Math.max(mx, bx - (bs >> 1))
             const br = Math.min(mx + mw, bx + (bs >> 1))
             if (br > bl) target.fillRect(bl, by, br - bl, bs, CAR_COLORS[j])
+        }
+        // mini track-map BELOW the rear mirror, with a dot for every car's
+        // live position around the lap.
+        drawMiniMap(target, mx - 1, my + mh + 2, mw + 2, 18)
+    }
+
+    // Shared position mini-map: the Monaco outline + a coloured dot per car at
+    // its current spot around the lap. Drawn in a (w x h) box at (bx, by).
+    function drawMiniMap(target: Image, bx: number, by: number, w: number, h: number) {
+        target.fillRect(bx, by, w, h, 0)
+        target.drawRect(bx, by, w, h, C_PANEL)
+        // fit the TITLE_TRACK outline into the box (compute its bounds once)
+        let minX = 999, maxX = -999, minY = 999, maxY = -999
+        for (let k = 0; k < TITLE_TRACK.length; k += 2) {
+            const x = TITLE_TRACK[k], y = TITLE_TRACK[k + 1]
+            if (x < minX) minX = x; if (x > maxX) maxX = x
+            if (y < minY) minY = y; if (y > maxY) maxY = y
+        }
+        const sx = (w - 4) / (maxX - minX), sy = (h - 4) / (maxY - minY)
+        // draw the outline (faint)
+        let prevX = bx + 2 + (TITLE_TRACK[0] - minX) * sx
+        let prevY = by + 2 + (TITLE_TRACK[1] - minY) * sy
+        for (let k = 2; k <= TITLE_TRACK.length; k += 2) {
+            const nx = bx + 2 + (TITLE_TRACK[k % TITLE_TRACK.length] - minX) * sx
+            const ny = by + 2 + (TITLE_TRACK[(k + 1) % TITLE_TRACK.length] - minY) * sy
+            target.drawLine(prevX, prevY, nx, ny, 13)
+            prevX = nx; prevY = ny
+        }
+        // a dot for each car at its lap progress (mapped onto the outline points)
+        const np = TITLE_TRACK.length / 2
+        for (let j = 0; j < carCount(); j++) {
+            const prog = (((pos[j] % lapLen) + lapLen) % lapLen) / lapLen
+            const idx = Math.floor(prog * np) % np
+            const dx = bx + 2 + (TITLE_TRACK[idx * 2] - minX) * sx
+            const dy = by + 2 + (TITLE_TRACK[idx * 2 + 1] - minY) * sy
+            target.fillRect(dx - 1, dy - 1, 3, 3, CAR_COLORS[j])
         }
     }
 
