@@ -146,7 +146,7 @@ namespace fpSplit {
     let numPlayers = 2
     let lightsT = 0
     let selectT = 0                 // seconds the setup menu has been shown
-    let autoStartSecs = 4           // menu auto-starts after this many seconds (0 = wait for A)
+    let autoStartSecs = 5           // menu auto-starts after this many seconds (0 = wait for A)
     let finished = false
     let winner = -1
     let started = false
@@ -299,13 +299,15 @@ namespace fpSplit {
         // START row
         const startActive = menuRow == 6
         target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
-        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
-        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 8, 110, 1, image.font5)
-        // auto-start countdown (so players know it'll start on its own)
+        // START row / auto-start countdown
         if (autoStartSecs > 0) {
-            const left = Math.max(0, Math.ceil(autoStartSecs - selectT))
-            target.print("START IN " + left, 116, 4, C_GRN, image.font5)
+            const left = Math.max(1, Math.ceil(autoStartSecs - selectT))
+            target.print("STARTING IN", 48, 91, 1, image.font5)
+            target.print("" + left, 76, 99, C_GRN, image.font8)   // big number
+        } else {
+            target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
         }
+        target.print("UP/DN MOVE  L/R CHANGE  A=GO NOW", 4, 112, 1, image.font5)
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
