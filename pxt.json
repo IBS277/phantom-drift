@@ -1,7 +1,7 @@
 {
     "name": "Phantom Drift",
-    "version": "1.0.0",
-    "description": "First-person split-screen racing (2-4 players). Creator: Ishan Sathavalli. Millburn Middle School. Version 1.0",
+    "version": "1.0.1",
+    "description": "Split-screen racing. Ishan S. Millburn Middle School. V1.0",
     "dependencies": {
         "device": "*"
     },
