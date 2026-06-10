@@ -149,8 +149,11 @@ namespace fpSplit {
     let winner = -1
     let started = false
     let finishHandler: (winnerIndex: number) => void = null
+    let startHandler: () => void = null              // onStart()
+    let lapHandler: (player: number, lap: number) => void = null  // onLap()
     let standings: number[] = []     // car indices, finishing order (podium)
     let podiumT = 0                  // podium animation timer
+    let builtTrack: number[] = []    // track assembled by the addX() builder calls
 
     // ---- track select (Phase 4) ----
     // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
@@ -1210,6 +1213,8 @@ namespace fpSplit {
             // record best lap and start the next lap's timer
             if (bestLap[i] == 0 || lapTime[i] < bestLap[i]) bestLap[i] = lapTime[i]
             lapTime[i] = 0
+            // onLap(player 1-4, lap number) — only for human players, capped at lapsToWin
+            if (lapHandler && i < numPlayers) lapHandler(i + 1, Math.min(lp + 1, lapsToWin))
             if (lp >= lapsToWin && !finished) {
                 finished = true
                 winner = i
@@ -1316,22 +1321,103 @@ namespace fpSplit {
         difficulty = level
     }
 
+    /** Set how many players race (2–4). */
+    //% blockId=fpsplit_set_players block="set players to %count"
+    //% count.min=2 count.max=4 count.defl=2
+    export function setPlayers(count: number) {
+        numPlayers = Math.max(2, Math.min(4, count))
+    }
+
     /** Run a function when a player wins (gets the winning player number 1–4). */
-    //% blockId=fpsplit_on_win block="on player win"
+    //% blockId=fpsplit_on_win block="on player win $winner"
     //% draggableParameters
     export function onWin(handler: (winner: number) => void) {
-        // wrap so the public callback receives a 1-based player number
         finishHandler = function (idx: number) { handler(idx + 1) }
     }
 
+    /** Run a function when the race starts (after the lights go green). */
+    //% blockId=fpsplit_on_start block="on race start"
+    export function onStart(handler: () => void) {
+        startHandler = handler
+    }
+
+    /** Run a function each time a player completes a lap (player 1–4, lap number). */
+    //% blockId=fpsplit_on_lap block="on player $player completes lap $lap"
+    //% draggableParameters
+    export function onLap(handler: (player: number, lap: number) => void) {
+        lapHandler = handler
+    }
+
+    /** The race position of a player (1 = leading). Player number is 1–4. */
+    //% blockId=fpsplit_get_place block="place of player %player"
+    //% player.min=1 player.max=4
+    export function getPlace(player: number): number {
+        return placeOf(player - 1)
+    }
+
+    /** The current lap (1-based) of a player. Player number is 1–4. */
+    //% blockId=fpsplit_get_lap block="lap of player %player"
+    //% player.min=1 player.max=4
+    export function getLap(player: number): number {
+        return lapOf(player - 1)
+    }
+
+    // ----------------------------------------------- readable track builder
+    // Build a track piece by piece, then startRace() with no argument uses it.
+    // Curvature: + turns right, - turns left, 0 is straight.
+
+    /** Start a fresh, empty track (call before adding pieces). */
+    //% blockId=fpsplit_new_track block="new track"
+    export function newTrack() {
+        builtTrack = []
+    }
+    function pushSegs(curve: number, count: number) {
+        for (let k = 0; k < count; k++) builtTrack.push(curve)
+    }
+    /** Add a straight section (length = how many segments). */
+    //% blockId=fpsplit_add_straight block="add straight length %length"
+    //% length.min=1 length.defl=3
+    export function addStraight(length: number) {
+        pushSegs(0, Math.max(1, length))
+    }
+    /** Add a right-hand turn (length = how many segments). */
+    //% blockId=fpsplit_add_right block="add right turn length %length"
+    //% length.min=1 length.defl=2
+    export function addRightTurn(length: number) {
+        pushSegs(0.7, Math.max(1, length))
+    }
+    /** Add a left-hand turn (length = how many segments). */
+    //% blockId=fpsplit_add_left block="add left turn length %length"
+    //% length.min=1 length.defl=2
+    export function addLeftTurn(length: number) {
+        pushSegs(-0.7, Math.max(1, length))
+    }
+    /** Add a sharp hairpin bend. */
+    //% blockId=fpsplit_add_hairpin block="add hairpin"
+    export function addHairpin() {
+        builtTrack.push(1.4); builtTrack.push(1.7); builtTrack.push(1.5)
+    }
+    /** Add a quick left-right chicane. */
+    //% blockId=fpsplit_add_chicane block="add chicane"
+    export function addChicane() {
+        builtTrack.push(0.8); builtTrack.push(-0.8)
+    }
+
     /**
-     * Start the race on the given track. Shows the setup menu (pre-filled with
-     * any defaults you set), then the lights, then the split-screen race.
-     * The track is a list of corners: 0 = straight, + = right, - = left.
+     * Start the race. Pass a track (list of corners), or pass an empty list []
+     * to use the track you built with the addStraight/addRightTurn/... calls.
+     * Shows the setup menu (pre-filled with your defaults), lights, then race.
      */
     //% blockId=fpsplit_start block="start race on track %track"
     export function startRace(track: number[]) {
-        run(track, 46, lapsToWin)
+        const t = (track && track.length > 1) ? track : builtTrack
+        run(t, 46, lapsToWin)
+    }
+
+    /** Start the race using the track you built with the add... calls. */
+    //% blockId=fpsplit_start_built block="start race"
+    export function startBuiltRace() {
+        run(builtTrack, 46, lapsToWin)
     }
 
     /**
@@ -1440,7 +1526,10 @@ namespace fpSplit {
             if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
                 lightsT += dt
-                if (lightsT >= 2.7) phase = PH_RACE
+                if (lightsT >= 2.7) {
+                    phase = PH_RACE
+                    if (startHandler) startHandler()      // onStart()
+                }
                 return
             }
             if (phase != PH_RACE || finished) return
