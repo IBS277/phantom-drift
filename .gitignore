@@ -16,3 +16,6 @@ node_modules/
 # My local game code (pasted into the Arcade project, NOT part of the extension)
 my_game_main.ts
 PASTE_INTO_ARCADE.ts
+
+# Local-only rules guide (not part of the extension)
+RULES.html

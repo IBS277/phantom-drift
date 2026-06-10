@@ -1,7 +1,7 @@
 {
     "name": "Phantom Drift",
-    "version": "1.1.0",
-    "description": "Split-screen racing. Ishan S. Millburn Middle School. V1.1",
+    "version": "1.2.0",
+    "description": "Split-screen racing. Ishan S. Millburn Middle School. V1.2",
     "dependencies": {
         "device": "*"
     },

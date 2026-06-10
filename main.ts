@@ -165,7 +165,9 @@ namespace fpSplit {
     // Tracks are defined by the game's main.ts via fpSplit.addTrack("name") then
     // addStraight/addRightTurn/... — they're stored here and shown on the menu.
     let trackNames: string[] = []    // names shown on the TRACK menu row
-    let trackCurves: number[][] = [] // the curve data for each named track
+    let trackCurves: number[][] = [] // the curve data for each named track (drives the car)
+    let trackShapes: number[][] = [] // optional (x,y) outline per track, for an exact mini-map ([] if none)
+    let curShape: number[] = []      // (x,y) outline of the CURRENT track (used by the mini-map)
     let hostCurve = [0]              // (legacy: the curve from run(); used if no addTrack calls)
     let selTrack = 0                // which track is highlighted on the picker
     let cpuCount = 0                // extra AI cars beyond human players (set on select)
@@ -251,6 +253,7 @@ namespace fpSplit {
     function beginRaceFromMenu() {
         // pick the highlighted track from the list the game defined
         const chosen = (selTrack < trackCurves.length) ? trackCurves[selTrack] : hostCurve
+        curShape = (selTrack < trackShapes.length) ? trackShapes[selTrack] : []
         setTrack(chosen, segLen)
         buildItems()
         pitD = Math.floor(lapLen * 0.85)   // pit zone near the end of the lap
@@ -1379,6 +1382,14 @@ namespace fpSplit {
     // each segment's curvature turns the heading, then we step forward. Produces
     // the actual shape of THIS track for the mini-map (Custom/Oval/Twisty/Monaco).
     function buildMapPath() {
+        // If this track was defined by an exact outline (addTrackShape), draw THOSE
+        // points so the mini-map matches the real circuit map exactly.
+        if (curShape && curShape.length >= 4) {
+            mapPath = []
+            for (let i = 0; i < curShape.length; i++) mapPath.push(curShape[i])
+            return
+        }
+        // Otherwise trace the curvature data by "driving" it.
         mapPath = []
         let x = 0, y = 0, ang = 0
         for (let i = 0; i < trackCurve.length; i++) {
@@ -1493,6 +1504,7 @@ namespace fpSplit {
         if (builtTrack.length > 1) {
             trackNames.push(curTrackName.length > 0 ? curTrackName : "TRACK " + (trackNames.length + 1))
             trackCurves.push(builtTrack)
+            trackShapes.push([])   // no exact outline; mini-map will trace the curve
         }
     }
 
@@ -1512,7 +1524,38 @@ namespace fpSplit {
         if (curve && curve.length > 1) {
             trackNames.push(name)
             trackCurves.push(curve)
+            trackShapes.push([])   // no exact outline; mini-map will trace the curve
         }
+    }
+
+    /**
+     * Add a track from the REAL circuit's outline. points = a flat list of
+     * x,y,x,y,... map coordinates traced from the actual track map (any scale —
+     * it's auto-fitted). The mini-map draws this exact shape, and the car is
+     * driven around it. This is the most faithful way to recreate a real circuit.
+     */
+    //% blockId=fpsplit_add_track_shape block="add track named %name from shape %points"
+    export function addTrackShape(name: string, points: number[]) {
+        if (!points || points.length < 6) return   // need at least 3 points
+        // Turn the outline into curvature data so the car drives the same shape:
+        // at each point, the heading turns by the angle between the incoming and
+        // outgoing segments. Right turn => +, left turn => -.
+        const np = Math.floor(points.length / 2)
+        const curve: number[] = []
+        for (let i = 0; i < np; i++) {
+            const ax = points[(i % np) * 2], ay = points[(i % np) * 2 + 1]
+            const bx = points[((i + 1) % np) * 2], by = points[((i + 1) % np) * 2 + 1]
+            const cx = points[((i + 2) % np) * 2], cy = points[((i + 2) % np) * 2 + 1]
+            const h1 = Math.atan2(by - ay, bx - ax)   // heading into the corner
+            const h2 = Math.atan2(cy - by, cx - bx)   // heading out of the corner
+            let d = h2 - h1
+            while (d > Math.PI) d -= 2 * Math.PI       // wrap to -PI..PI
+            while (d < -Math.PI) d += 2 * Math.PI
+            curve.push(d / 0.6)                        // undo the 0.6 the engine applies
+        }
+        trackNames.push(name)
+        trackCurves.push(curve)
+        trackShapes.push(points)
     }
 
     /** Start a fresh, unnamed track (legacy; addTrack is preferred). */
@@ -1579,6 +1622,7 @@ namespace fpSplit {
      * first-person race. Call once. (Low-level; startRace() is simpler.)
      */
     export function run(curve: number[], segmentLength: number, laps: number) {
+        curShape = []               // menu/default uses the traced curve; menu selection sets the real shape
         setTrack(curve, segmentLength)
         setLaps(laps)
         if (started) return
