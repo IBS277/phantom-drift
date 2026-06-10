@@ -1746,7 +1746,9 @@ namespace fpSplit {
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
             if (phase == PH_TITLE) {           // title splash waits for A
                 titleT += dt                   // (used only to blink the prompt)
-                playBgMusic(0, MENU_TUNE, 100)
+                // start the music only AFTER the title has been on screen a moment,
+                // so the screen always paints first (never blocked by audio startup)
+                if (titleT > 0.35) playBgMusic(0, MENU_TUNE, 100)
                 return
             }
             if (phase == PH_SELECT) {          // menu waits for the player to press A
