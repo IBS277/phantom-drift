@@ -162,56 +162,12 @@ namespace fpSplit {
     let mapPath: number[] = []       // (x,y) outline of the CURRENT track, for the mini-map
 
     // ---- track select (Phase 4) ----
-    // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
-    // run(); 1-3 are presets. selTrack picks one on the select screen.
-    // Three distinct circuits. Each curve SUMS to ~+10.5 so it turns a full
-    // clockwise loop and closes on the mini-map (buildMapPath uses ang+=c*0.6).
-    const TRACK_NAMES = ["MONACO", "SPEEDWAY", "GRAND PRIX"]
-
-    // MONACO — tight twisty street circuit (sharp hairpins + chicanes).
-    // Sum ~10.5 so the lap closes into a loop on the mini-map.
-    const TRACK_MONACO = [
-        0, 0,              // start / finish straight
-        1.3, 0.6,          // Ste Devote (sharp right)
-        0,                 // Beau Rivage
-        0.8,               // Massenet right sweep
-        0,                 // Casino straight
-        1.6, 0.8,          // FAIRMONT HAIRPIN (very tight)
-        0,                 // Portier
-        0.7,               // tunnel right
-        0,                 // straight
-        1.4, 0.6,          // Rascasse / Swimming Pool tight right
-        0,                 // short straight
-        1.0, 0.6,          // Noghes right
-        0, 0               // run to the line
-    ]
-
-    // SPEEDWAY — a clean OVAL: two long straights + two big 180° right sweeps.
-    const TRACK_SPEEDWAY = [
-        0, 0, 0, 0, 0,                 // back straight
-        1.0, 1.0, 1.0, 1.0, 1.0,       // turn 1 (180° right sweep)
-        0, 0, 0, 0, 0,                 // front straight
-        1.0, 1.0, 1.0, 1.0, 1.0        // turn 2 (180° right sweep)
-    ]
-
-    // GRAND PRIX — long flowing road course: fast sweeps + a couple chicanes.
-    const TRACK_GRANDPRIX = [
-        0, 0, 0,           // pit straight
-        0.9, 1.1,          // turn 1 (right)
-        0,                 // straight
-        0.7,               // gentle right
-        -0.5, 0.5,         // chicane (left-right)
-        1.0, 0.9,          // double-apex right
-        0,                 // back straight
-        1.2, 1.0,          // hairpin-ish right
-        0.6,               // sweep
-        -0.4, 0.4,         // chicane
-        1.1, 1.0,          // final corners (right)
-        0, 0               // home straight
-    ]
-
-    let hostCurve = [0]              // (kept; no longer in the menu)
-    let selTrack = 0                // default to MONACO on the picker
+    // Tracks are defined by the game's main.ts via fpSplit.addTrack("name") then
+    // addStraight/addRightTurn/... — they're stored here and shown on the menu.
+    let trackNames: string[] = []    // names shown on the TRACK menu row
+    let trackCurves: number[][] = [] // the curve data for each named track
+    let hostCurve = [0]              // (legacy: the curve from run(); used if no addTrack calls)
+    let selTrack = 0                // which track is highlighted on the picker
     let cpuCount = 0                // extra AI cars beyond human players (set on select)
 
     // ---- pre-game menu (cursor over setting rows) ----
@@ -264,7 +220,7 @@ namespace fpSplit {
         if (menuRow == 0) {                         // players 2..4
             numPlayers = Math.max(2, Math.min(4, numPlayers + dir))
         } else if (menuRow == 1) {                  // track
-            selTrack = (selTrack + dir + 3) % 3
+            { const n = Math.max(1, trackNames.length); selTrack = (selTrack + dir + n) % n }
         } else if (menuRow == 2) {                  // laps 1..9
             lapsToWin = Math.max(1, Math.min(9, lapsToWin + dir))
         } else if (menuRow == 3) {                  // pit stops off/auto/manual
@@ -293,9 +249,8 @@ namespace fpSplit {
     }
 
     function beginRaceFromMenu() {
-        // pick the chosen circuit: 0 Monaco, 1 Speedway, 2 Grand Prix
-        const chosen = selTrack == 0 ? TRACK_MONACO
-            : selTrack == 1 ? TRACK_SPEEDWAY : TRACK_GRANDPRIX
+        // pick the highlighted track from the list the game defined
+        const chosen = (selTrack < trackCurves.length) ? trackCurves[selTrack] : hostCurve
         setTrack(chosen, segLen)
         buildItems()
         pitD = Math.floor(lapLen * 0.85)   // pit zone near the end of the lap
@@ -389,7 +344,7 @@ namespace fpSplit {
         target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
         const wxLabel = wxMode == 1 ? WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
         menuLine(target, 0, 16, "PLAYERS", "" + numPlayers)
-        menuLine(target, 1, 28, "TRACK", TRACK_NAMES[selTrack])
+        menuLine(target, 1, 28, "TRACK", trackNames.length > 0 ? trackNames[selTrack] : "—")
         menuLine(target, 2, 40, "LAPS", "" + lapsToWin)
         menuLine(target, 3, 52, "PIT STOPS", PITMODE_NAMES[pitMode])
         menuLine(target, 4, 64, "DIFFICULTY", DIFF_NAMES[difficulty])
@@ -1531,10 +1486,30 @@ namespace fpSplit {
     // Build a track piece by piece, then startRace() with no argument uses it.
     // Curvature: + turns right, - turns left, 0 is straight.
 
-    /** Start a fresh, empty track (call before adding pieces). */
+    let curTrackName = ""            // name of the track currently being built
+
+    // Save the track currently being built into the named-track list.
+    function commitCurrentTrack() {
+        if (builtTrack.length > 1) {
+            trackNames.push(curTrackName.length > 0 ? curTrackName : "TRACK " + (trackNames.length + 1))
+            trackCurves.push(builtTrack)
+        }
+    }
+
+    /** Start a NEW named track. Follow with addStraight/addRightTurn/... to build
+     * it. Add several (each with its own name) to give players a track menu. */
+    //% blockId=fpsplit_add_track block="add track named %name"
+    export function addTrack(name: string) {
+        commitCurrentTrack()        // finish the previous one
+        curTrackName = name
+        builtTrack = []
+    }
+
+    /** Start a fresh, unnamed track (legacy; addTrack is preferred). */
     //% blockId=fpsplit_new_track block="new track"
     export function newTrack() {
         builtTrack = []
+        curTrackName = ""
     }
     function pushSegs(curve: number, count: number) {
         for (let k = 0; k < count; k++) builtTrack.push(curve)
@@ -1579,10 +1554,14 @@ namespace fpSplit {
         run(t, 46, lapsToWin)
     }
 
-    /** Start the race using the track you built with the add... calls. */
+    /** Start the race using the track(s) you defined with addTrack/add... calls.
+     * If you defined several tracks, they appear on the TRACK menu. */
     //% blockId=fpsplit_start_built block="start race"
     export function startBuiltRace() {
-        run(builtTrack, 46, lapsToWin)
+        commitCurrentTrack()        // finish the last track being built
+        // fallback: if no named tracks were added, use the single built track
+        const first = trackCurves.length > 0 ? trackCurves[0] : builtTrack
+        run(first, 46, lapsToWin)
     }
 
     /**
