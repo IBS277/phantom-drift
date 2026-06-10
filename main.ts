@@ -159,6 +159,7 @@ namespace fpSplit {
     let standings: number[] = []     // car indices, finishing order (podium)
     let podiumT = 0                  // podium animation timer
     let builtTrack: number[] = []    // track assembled by the addX() builder calls
+    let mapPath: number[] = []       // (x,y) outline of the CURRENT track, for the mini-map
 
     // ---- track select (Phase 4) ----
     // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
@@ -1153,30 +1154,34 @@ namespace fpSplit {
     function drawMiniMap(target: Image, bx: number, by: number, w: number, h: number) {
         target.fillRect(bx, by, w, h, 0)
         target.drawRect(bx, by, w, h, C_PANEL)
-        // fit the TITLE_TRACK outline into the box (compute its bounds once)
+        if (mapPath.length < 4) return
+        // fit the CURRENT track's outline (mapPath) into the box
         let minX = 999, maxX = -999, minY = 999, maxY = -999
-        for (let k = 0; k < TITLE_TRACK.length; k += 2) {
-            const x = TITLE_TRACK[k], y = TITLE_TRACK[k + 1]
+        for (let k = 0; k < mapPath.length; k += 2) {
+            const x = mapPath[k], y = mapPath[k + 1]
             if (x < minX) minX = x; if (x > maxX) maxX = x
             if (y < minY) minY = y; if (y > maxY) maxY = y
         }
-        const sx = (w - 4) / (maxX - minX), sy = (h - 4) / (maxY - minY)
-        // draw the outline (faint)
-        let prevX = bx + 2 + (TITLE_TRACK[0] - minX) * sx
-        let prevY = by + 2 + (TITLE_TRACK[1] - minY) * sy
-        for (let k = 2; k <= TITLE_TRACK.length; k += 2) {
-            const nx = bx + 2 + (TITLE_TRACK[k % TITLE_TRACK.length] - minX) * sx
-            const ny = by + 2 + (TITLE_TRACK[(k + 1) % TITLE_TRACK.length] - minY) * sy
+        const spanX = Math.max(0.1, maxX - minX), spanY = Math.max(0.1, maxY - minY)
+        const sc = Math.min((w - 4) / spanX, (h - 4) / spanY)   // keep aspect
+        const offX = bx + 2 + (w - 4 - spanX * sc) / 2
+        const offY = by + 2 + (h - 4 - spanY * sc) / 2
+        // draw the outline (faint), closing the loop
+        let prevX = offX + (mapPath[0] - minX) * sc
+        let prevY = offY + (mapPath[1] - minY) * sc
+        for (let k = 2; k <= mapPath.length; k += 2) {
+            const nx = offX + (mapPath[k % mapPath.length] - minX) * sc
+            const ny = offY + (mapPath[(k + 1) % mapPath.length] - minY) * sc
             target.drawLine(prevX, prevY, nx, ny, 13)
             prevX = nx; prevY = ny
         }
-        // a dot for each car at its lap progress (mapped onto the outline points)
-        const np = TITLE_TRACK.length / 2
+        // a dot for each car at its lap progress
+        const np = mapPath.length / 2
         for (let j = 0; j < carCount(); j++) {
             const prog = (((pos[j] % lapLen) + lapLen) % lapLen) / lapLen
             const idx = Math.floor(prog * np) % np
-            const dx = bx + 2 + (TITLE_TRACK[idx * 2] - minX) * sx
-            const dy = by + 2 + (TITLE_TRACK[idx * 2 + 1] - minY) * sy
+            const dx = offX + (mapPath[idx * 2] - minX) * sc
+            const dy = offY + (mapPath[idx * 2 + 1] - minY) * sc
             target.fillRect(dx - 1, dy - 1, 3, 3, CAR_COLORS[j])
         }
     }
@@ -1393,6 +1398,21 @@ namespace fpSplit {
         if (curve && curve.length > 1) trackCurve = curve
         segLen = segmentLength
         lapLen = trackCurve.length * segLen
+        buildMapPath()
+    }
+
+    // Trace the current trackCurve into a list of (x,y) points by "driving" it:
+    // each segment's curvature turns the heading, then we step forward. Produces
+    // the actual shape of THIS track for the mini-map (Custom/Oval/Twisty/Monaco).
+    function buildMapPath() {
+        mapPath = []
+        let x = 0, y = 0, ang = 0
+        for (let i = 0; i < trackCurve.length; i++) {
+            ang += trackCurve[i] * 0.6        // curvature turns the heading
+            x += Math.cos(ang)
+            y += Math.sin(ang)
+            mapPath.push(x); mapPath.push(y)
+        }
     }
 
     /** Register a callback fired when a player finishes (gets the winner index 0-3).
