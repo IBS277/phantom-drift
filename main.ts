@@ -925,7 +925,6 @@ namespace fpSplit {
             const ww = Math.round((barW - 2) * (1 - wear[i]))
             const wcol = wear[i] > 0.7 ? C_RED : wear[i] > 0.4 ? C_YEL : C_GRN
             if (ww > 0) target.fillRect(barX + 1, wy + 1, ww, 1, wcol)
-            fillDisc(target, barX + barW + 3, wy + 1, 2, TYRE_COL[tyre[i]])
             nextY = wy + 4
         }
         // current lap time stays under the bars; best lap moves to bottom-left
