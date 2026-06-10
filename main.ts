@@ -1505,6 +1505,16 @@ namespace fpSplit {
         builtTrack = []
     }
 
+    /** Add a complete named track from a curve array (0 = straight, + = right,
+     * - = left). Lets you trace a real circuit's exact shape. */
+    //% blockId=fpsplit_add_track_data block="add track named %name from data %curve"
+    export function addTrackData(name: string, curve: number[]) {
+        if (curve && curve.length > 1) {
+            trackNames.push(name)
+            trackCurves.push(curve)
+        }
+    }
+
     /** Start a fresh, unnamed track (legacy; addTrack is preferred). */
     //% blockId=fpsplit_new_track block="new track"
     export function newTrack() {
