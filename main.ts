@@ -286,6 +286,19 @@ namespace fpSplit {
         target.print(value, 96, y, valCol, image.font5)
     }
     function drawMenu(target: Image) {
+        // In the FINAL 3 seconds, take over the whole screen with a big
+        // single-number countdown: 3 ... 2 ... 1 ... then the race starts.
+        const left = autoStartSecs > 0 ? Math.ceil(autoStartSecs - selectT) : 99
+        if (autoStartSecs > 0 && left <= 3) {
+            target.fill(0)
+            target.print("GET READY!", 46, 18, C_YEL, image.font5)
+            // huge centred number (font8 scaled up by drawing it big)
+            const n = Math.max(1, left)
+            drawBigNumber(target, n, 80, 60)
+            target.print("A = GO NOW", 52, 104, 1, image.font5)
+            return
+        }
+        // normal settings menu
         target.fill(C_SKY)
         target.fillRect(2, 2, 156, 116, 0)
         target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
@@ -296,18 +309,31 @@ namespace fpSplit {
         menuLine(target, 3, 52, "PIT STOPS", PITMODE_NAMES[pitMode])
         menuLine(target, 4, 64, "DIFFICULTY", DIFF_NAMES[difficulty])
         menuLine(target, 5, 76, "WEATHER", wxLabel)
-        // START row
         const startActive = menuRow == 6
         target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
-        // START row / auto-start countdown
-        if (autoStartSecs > 0) {
-            const left = Math.max(1, Math.ceil(autoStartSecs - selectT))
-            target.print("STARTING IN", 48, 91, 1, image.font5)
-            target.print("" + left, 76, 99, C_GRN, image.font8)   // big number
-        } else {
-            target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
-        }
+        target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
         target.print("UP/DN MOVE  L/R CHANGE  A=GO NOW", 4, 112, 1, image.font5)
+    }
+
+    // Draw a big centred digit (1-3) using filled rectangles, centred at (cx,cy).
+    function drawBigNumber(target: Image, n: number, cx: number, cy: number) {
+        const w = 22, h = 34, th = 5      // glyph width/height/stroke thickness
+        const l = cx - (w >> 1), t = cy - (h >> 1), r = l + w, b = t + h, mid = t + (h >> 1)
+        const col = C_GRN
+        if (n == 1) {
+            target.fillRect(cx - (th >> 1), t, th, h, col)
+        } else if (n == 2) {
+            target.fillRect(l, t, w, th, col)            // top
+            target.fillRect(r - th, t, th, h >> 1, col)  // upper-right
+            target.fillRect(l, mid - (th >> 1), w, th, col) // middle
+            target.fillRect(l, mid, th, h >> 1, col)     // lower-left
+            target.fillRect(l, b - th, w, th, col)       // bottom
+        } else { // 3
+            target.fillRect(l, t, w, th, col)            // top
+            target.fillRect(l, mid - (th >> 1), w, th, col) // middle
+            target.fillRect(l, b - th, w, th, col)       // bottom
+            target.fillRect(r - th, t, th, h, col)       // right full
+        }
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
