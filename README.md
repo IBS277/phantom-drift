@@ -1,64 +1,95 @@
-# Racing Multiplayer — First-Person Split-Screen Engine
+# 🏎️ Phantom Drift
 
-A MakeCode Arcade **extension** that adds **first-person, split-screen** racing for
-2–4 players. Each player drives their own car (player1–4 controls) and gets their own
-driver's-eye view in their part of the screen, with a rear-view mirror and starting
-lights. Uses the player2–4 controls, so MakeCode's **Host** button appears for online
-multiplayer.
+**First-person split-screen racing for MakeCode Arcade (2–4 players)**
 
-> Unlike a top-down camera, the first-person view is drawn by this engine, so the
-> "track" is a list of curvatures you supply — see below.
+Created by **Ishan S.** · Millburn Middle School
 
-## Use as Extension
+---
 
-- open https://arcade.makecode.com/
-- click **New Project**
-- click **Extensions** under the gearwheel (⚙) menu
-- paste **https://github.com/IBS277/racing-multiplayer** and import
+## What it is
 
-## Quick start
+A first-person, split-screen racing game where 2–4 players race head-to-head on one
+screen — each driver sees their own view of the track. Pick a circuit, choose your
+tyres in the pits, race through changing weather, and battle for the podium.
 
-In the JavaScript view of your game:
+## Features
 
-```ts
-fpSplit.run(
-    [0, 0, 0.5, 0, -0.6, 0.4, 1.6, 0.5, -0.2, 0.8, -0.8, -0.6, 1.0, 0.5, 0, 0],
-    46,   // segment length (world units per curvature value)
-    3     // laps to win
-)
+- 🪟 **Split-screen** — 2–4 players, each with their own first-person view
+- 🛣️ **3 circuits** — Monaco, Speedway, Grand Prix (designed in your game code)
+- ⚡ **Boost** — hold **B** for a turbo burst
+- ⛽ **Pickups & hazards** — grab fuel, dodge oil slicks
+- 🔧 **Pit stops** — drive into the pit lane and choose Soft / Medium / Hard / Wet tyres
+- 🌦️ **Dynamic weather** — sun, rain, fog and night that change during the race
+- 🗺️ **Live mini-map** — see every car's position on the track
+- 🏆 **Podium celebration** — the winner jumps highest, with confetti!
+- 🏁 **Title screen** — your game name, creator and school
+
+## How to use it
+
+1. In MakeCode Arcade: **New Project** → ⚙ → **Extensions** → paste this repo URL.
+2. In your `main.ts` (JavaScript view), design your tracks, set the rules, and start:
+
+```javascript
+// Design tracks (the names show up on the menu)
+fpSplit.addTrack("MONACO")
+fpSplit.addStraight(2)
+fpSplit.addHairpin()
+fpSplit.addRightTurn(3)
+fpSplit.addStraight(2)
+
+// Title + rules
+fpSplit.setTitle("PHANTOM DRIFT", "Ishan Sathavalli", "Millburn Middle School")
+fpSplit.setPlayers(2)
+fpSplit.setLaps(3)
+fpSplit.setWeather(WeatherMode.Dynamic)
+fpSplit.setPitStops(PitMode.Manual)
+
+// Go!
+fpSplit.startBuiltRace()
 ```
 
-That single call gives you: a 2–4 player picker, red/yellow/green start lights, the
-split-screen first-person race, rear mirrors, off-track penalty, and lap counting.
+## Building a track
 
-## The track
+Each call adds a piece of road. Use several `addTrack("name")` blocks to give players
+a menu of circuits.
 
-`run(curve, segmentLength, laps)` takes a **curve array**: one number per segment.
+| Call | Adds |
+|------|------|
+| `fpSplit.addTrack("name")` | Start a new named track |
+| `fpSplit.addStraight(n)` | A straight, `n` segments long |
+| `fpSplit.addRightTurn(n)` / `addLeftTurn(n)` | A turn |
+| `fpSplit.addHairpin()` | A sharp U-bend |
+| `fpSplit.addChicane()` | A quick left-right wiggle |
+| `fpSplit.startBuiltRace()` | Finish and launch (first track is default) |
 
-- `0` = straight
-- positive = right-hand corner (bigger = tighter)
-- negative = left-hand corner
+## Settings & events
 
-The list loops, so the end joins back to the start. Tune `segmentLength` for how long
-each segment lasts.
-
-## API
-
-| Function | What it does |
-|----------|--------------|
-| `fpSplit.run(curve, segLen, laps)` | Start the whole experience (picker → lights → race). Call once. |
-| `fpSplit.setTrack(curve, segLen)` | Replace the track. |
-| `fpSplit.setLaps(n)` | Set laps to win. |
-| `fpSplit.onFinish(handler)` | Callback with the winner's index (0–3) when someone finishes. |
-| `fpSplit.lapOf(i)` | Current lap (1-based) of player `i`. |
+| Call | What it does |
+|------|--------------|
+| `setTitle(name, creator, school)` | The opening title screen text |
+| `setPlayers(n)` · `setLaps(n)` | Players (2–4) and lap count |
+| `setWeather(WeatherMode.…)` | Off / Sunny / Rain / Fog / Night / Dynamic |
+| `setPitStops(PitMode.…)` | Off / Auto / Manual |
+| `setDifficulty(RaceDifficulty.…)` | Easy / Hard |
+| `onWin(winner => …)` | Runs when a player wins (1–4) |
+| `onLap(player, lap => …)` · `onStart(() => …)` | Lap / race-start events |
+| `getPlace(p)` · `getLap(p)` | Read a player's position / lap |
 
 ## Controls
 
-Per player: **◄ ►** steer · **▲** throttle · **▼** brake. Player 1 also uses **▲/▼** and
-**Ⓐ** on the start screen to choose the player count and begin.
+| Button | Race | Menu |
+|--------|------|------|
+| **Up** | Accelerate | Move cursor |
+| **Down** | Brake | Move cursor |
+| **Left / Right** | Steer | Change setting |
+| **A** | Pit / continue | Start race |
+| **B** | Boost ⚡ | — |
 
-## Notes / limits
+## 📖 Full rules
 
-- First-person split is hand-rendered (MakeCode has no 3D engine), so this engine owns
-  the road look; you provide the shape via the curve array.
-- 2 players = top/bottom halves; 3–4 = quadrants. At 4 players each view is small.
+A kid-friendly illustrated rules guide is in **`RULES.html`** — open it in a browser
+for an 8-slide walkthrough of how to play.
+
+---
+
+*Phantom Drift — built with MakeCode Arcade by Ishan S.*
