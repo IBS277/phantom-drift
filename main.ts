@@ -145,6 +145,8 @@ namespace fpSplit {
     let phase = PH_SELECT
     let numPlayers = 2
     let lightsT = 0
+    let selectT = 0                 // seconds the setup menu has been shown
+    let autoStartSecs = 4           // menu auto-starts after this many seconds (0 = wait for A)
     let finished = false
     let winner = -1
     let started = false
@@ -299,6 +301,11 @@ namespace fpSplit {
         target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
         target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
         target.print("UP/DN MOVE  L/R CHANGE  A=GO", 8, 110, 1, image.font5)
+        // auto-start countdown (so players know it'll start on its own)
+        if (autoStartSecs > 0) {
+            const left = Math.max(0, Math.ceil(autoStartSecs - selectT))
+            target.print("START IN " + left, 116, 4, C_GRN, image.font5)
+        }
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
@@ -847,10 +854,11 @@ namespace fpSplit {
             fillDisc(target, barX + barW + 4, wy + 1, 2, TYRE_COL[tyre[i]])
             nextY = wy + 4
         }
-        // lap times (only on full-width 2-player views)
+        // current lap time stays under the bars; best lap moves to bottom-left
         if (vw >= 120) {
-            target.print("T " + fmtTime(lapTime[i]), ox + 2, nextY, 1, image.font5)
-            target.print("B " + fmtTime(bestLap[i]), ox + 2, nextY + 7, C_YEL, image.font5)
+            target.print("LAP " + fmtTime(lapTime[i]), ox + 2, nextY, 1, image.font5)
+            // BEST lap time in the bottom-left corner (wide 2-player panels only)
+            target.print("BEST " + fmtTime(bestLap[i]), ox + 2, oy + 60 - 8, C_YEL, image.font5)
         }
         // PLACE indicator in the BOTTOM-RIGHT corner of this panel (panels are
         // 60px tall in both 2P and 4P layouts).
@@ -1328,6 +1336,13 @@ namespace fpSplit {
         numPlayers = Math.max(2, Math.min(4, count))
     }
 
+    /** Auto-start the race after this many seconds on the menu (0 = wait for A). */
+    //% blockId=fpsplit_set_autostart block="auto-start menu after %seconds seconds"
+    //% seconds.min=0 seconds.max=15 seconds.defl=4
+    export function setAutoStart(seconds: number) {
+        autoStartSecs = Math.max(0, seconds)
+    }
+
     /** Run a function when a player wins (gets the winning player number 1–4). */
     //% blockId=fpsplit_on_win block="on player win $winner"
     //% draggableParameters
@@ -1429,6 +1444,7 @@ namespace fpSplit {
         setLaps(laps)
         if (started) return
         started = true
+        selectT = 0                 // begin the menu auto-start countdown
         if (curve && curve.length > 1) hostCurve = curve
 
         // Enable MakeCode's online multiplayer hosting: referencing a
@@ -1523,6 +1539,12 @@ namespace fpSplit {
         game.onUpdate(function () {
             const dt = game.eventContext().deltaTime
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
+            if (phase == PH_SELECT) {
+                // menu auto-starts after autoStartSecs (players can still press A early)
+                selectT += dt
+                if (autoStartSecs > 0 && selectT >= autoStartSecs) beginRaceFromMenu()
+                return
+            }
             if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
                 lightsT += dt
