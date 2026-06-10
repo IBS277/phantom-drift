@@ -301,34 +301,32 @@ namespace fpSplit {
         target.fill(C_RED)                 // single-colour background
 
         // game NAME — big, on ONE line (font8 ≈ 6px/char), centred near the top
-        target.print(titleName, 80 - titleName.length * 3, 8, C_YEL, image.font8)
+        target.print(titleName, 80 - titleName.length * 3, 6, C_YEL, image.font8)
 
-        // ---- Monaco track outline (logo) centred lower, below the title ----
-        const ox = 80 - 72, oy = 64 - 48
-        let px = ox + TITLE_TRACK[0], py = oy + TITLE_TRACK[1]
+        // ---- Monaco track outline (logo) — smaller, centred, above the text ----
+        const sc = 0.62                    // scale the track down so text fits below
+        const cx = 80, cy = 52             // track centre on screen
+        let px = cx + (TITLE_TRACK[0] - 72) * sc, py = cy + (TITLE_TRACK[1] - 48) * sc
         for (let k = 2; k <= TITLE_TRACK.length; k += 2) {
-            const nx = ox + TITLE_TRACK[k % TITLE_TRACK.length]
-            const ny = oy + TITLE_TRACK[(k + 1) % TITLE_TRACK.length]
+            const nx = cx + (TITLE_TRACK[k % TITLE_TRACK.length] - 72) * sc
+            const ny = cy + (TITLE_TRACK[(k + 1) % TITLE_TRACK.length] - 48) * sc
             target.drawLine(px, py, nx, ny, 1)
             target.drawLine(px, py + 1, nx, ny + 1, 1)
-            target.drawLine(px + 1, py, nx + 1, ny, 1)
             px = nx; py = ny
         }
-        target.fillRect(ox + 14, oy + 68, 4, 4, 15)
 
-        // creator + school in BLACK, small font (font5 ≈ 4px/char), centred
-        if (titleCreator.length > 0) {
-            const c = "CREATOR: " + titleCreator
-            target.print(c, 80 - c.length * 2, 94, 15, image.font5)
-        }
+        // creator + school — LEFT-aligned, small font, so the full text shows.
+        const leftX = 6
+        if (titleCreator.length > 0)
+            target.print("Creator: " + titleCreator, leftX, 96, 15, image.font5)   // black
         if (titleSchool.length > 0)
-            target.print(titleSchool, 80 - titleSchool.length * 2, 102, 15, image.font5)
+            target.print(titleSchool, leftX, 104, 8, image.font5)                   // blue
 
-        // blinking "PRESS A TO CONTINUE" on a bar, in a tiny font (font5)
+        // blinking "PRESS A TO CONTINUE" on a bar, in the tiny font
         if ((Math.floor(titleT * 2) & 1) == 0) {
             const m = "PRESS A TO CONTINUE"
             const w = m.length * 4
-            target.fillRect(80 - (w >> 1) - 3, 111, w + 6, 9, 0)       // bar
+            target.fillRect(80 - (w >> 1) - 3, 112, w + 6, 8, 0)       // bar
             target.print(m, 80 - (w >> 1), 113, C_SKY, image.font5)
         }
     }
