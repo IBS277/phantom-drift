@@ -324,13 +324,19 @@ namespace fpSplit {
         } else {
             target.print(titleName, 80 - titleName.length * 5, 12, C_YEL, image.font8)
         }
-        // creator + school at the bottom (centred)
+        // creator + school (centred, just above the prompt)
         if (titleCreator.length > 0) {
             const c = "CREATOR: " + titleCreator
-            target.print(c, 80 - c.length * 2, 104, 1, image.font5)
+            target.print(c, 80 - c.length * 2, 96, 1, image.font5)
         }
         if (titleSchool.length > 0)
-            target.print(titleSchool, 80 - titleSchool.length * 2, 112, C_YEL, image.font5)
+            target.print(titleSchool, 80 - titleSchool.length * 2, 104, C_YEL, image.font5)
+        // blinking "PRESS A TO CONTINUE" in a distinct colour (cyan) at the bottom
+        if ((Math.floor(titleT * 2) & 1) == 0) {
+            const m = "PRESS A TO CONTINUE"
+            target.fillRect(80 - m.length * 2 - 2, 112, m.length * 4 + 4, 8, 0)
+            target.print(m, 80 - m.length * 2, 113, C_SKY, image.font5)
+        }
     }
 
     function drawMenu(target: Image) {
@@ -1520,7 +1526,8 @@ namespace fpSplit {
             else if (pitChoosing[0]) pitSel[0] = (pitSel[0] + 1) % NTYRE
         })
         controller.player1.A.onEvent(ControllerButtonEvent.Pressed, function () {
-            if (phase == PH_SELECT) beginRaceFromMenu()
+            if (phase == PH_TITLE) phase = PH_SELECT      // title -> menu
+            else if (phase == PH_SELECT) beginRaceFromMenu()
             else if (pitChoosing[0]) confirmTyre(0)
         })
         // players 2-4: tyre menu (left/right pick, A confirm). Also keeps the
@@ -1586,9 +1593,8 @@ namespace fpSplit {
         game.onUpdate(function () {
             const dt = game.eventContext().deltaTime
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
-            if (phase == PH_TITLE) {           // title splash for 2 seconds, then menu
-                titleT += dt
-                if (titleT >= 2) phase = PH_SELECT
+            if (phase == PH_TITLE) {           // title splash waits for A
+                titleT += dt                   // (used only to blink the prompt)
                 return
             }
             if (phase == PH_SELECT) return   // menu waits for the player to press A
