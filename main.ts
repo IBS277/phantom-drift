@@ -144,6 +144,10 @@ namespace fpSplit {
     const PH_TITLE = 4, PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
     let phase = PH_TITLE          // game opens on the title splash, then the menu
     let titleT = 0                // seconds the title screen has shown
+    // title text — set from the game's main.ts via fpSplit.setTitle(...)
+    let titleName = "MY RACING GAME"
+    let titleCreator = ""
+    let titleSchool = ""
     let numPlayers = 2
     let lightsT = 0
     let finished = false
@@ -284,24 +288,49 @@ namespace fpSplit {
         target.print(label, 16, y, labCol, image.font5)
         target.print(value, 96, y, valCol, image.font5)
     }
-    // Opening title splash: game name + creator + school. Shows ~2 seconds.
+    // Title-screen track outline (a Monaco-style circuit drawn as connected dots).
+    // Points are hand-placed in a 0..1 box; scaled/centred on screen.
+    const TITLE_TRACK = [
+        16, 70, 14, 50, 22, 38, 40, 36, 50, 28, 58, 16, 72, 14, 80, 24,
+        78, 38, 92, 44, 110, 40, 124, 46, 130, 60, 120, 70, 104, 70, 96, 60,
+        84, 64, 74, 78, 58, 80, 46, 74, 34, 80, 22, 78
+    ]
+    // Opening title splash. Text comes from fpSplit.setTitle(...) in the game's
+    // main.ts. Single-colour background with a Monaco track outline in the centre.
     function drawTitle(target: Image) {
-        target.fill(0)
-        // sky/track stripe backdrop for flavour
-        target.fillRect(0, 30, 160, 22, C_SKY)
-        target.fillRect(0, 52, 160, 14, C_GRASS_L)
-        // checkered band under the title
-        for (let x = 0; x < 160; x += 8) target.fillRect(x, 26, 4, 3, ((x >> 3) & 1) ? 1 : 15)
-        // game name (big)
-        target.print("PHOTOM", 40, 34, C_YEL, image.font8)
-        target.print("DRIFT", 52, 50, C_RED, image.font8)
-        // a little car icon
-        target.fillRect(74, 70, 12, 6, C_RED)
-        target.fillRect(72, 71, 3, 4, 15)
-        target.fillRect(85, 71, 3, 4, 15)
-        // creator + school at the bottom
-        target.print("CREATOR: ISHAN SATHAVALLI", 12, 96, 1, image.font5)
-        target.print("MILLBURN MIDDLE SCHOOL", 22, 106, C_GRN, image.font5)
+        target.fill(C_RED)                 // single-colour background
+        // ---- Monaco track outline (logo) centred around (80, 56) ----
+        const cxT = 80, cyT = 56, ox = cxT - 72, oy = cyT - 48
+        let px = ox + TITLE_TRACK[0], py = oy + TITLE_TRACK[1]
+        for (let k = 2; k <= TITLE_TRACK.length; k += 2) {
+            const nx = ox + TITLE_TRACK[k % TITLE_TRACK.length]
+            const ny = oy + TITLE_TRACK[(k + 1) % TITLE_TRACK.length]
+            // thick white track ribbon: draw the line, then a parallel one
+            target.drawLine(px, py, nx, ny, 1)
+            target.drawLine(px, py + 1, nx, ny + 1, 1)
+            target.drawLine(px + 1, py, nx + 1, ny, 1)
+            px = nx; py = ny
+        }
+        // start/finish checker on the track
+        target.fillRect(ox + 14, oy + 68, 4, 4, 15)
+        target.fillRect(ox + 16, oy + 70, 2, 2, 1)
+
+        // game NAME — big, centred, split on a space onto two lines
+        const sp = titleName.indexOf(" ")
+        if (sp > 0) {
+            const w1 = titleName.substr(0, sp), w2 = titleName.substr(sp + 1)
+            target.print(w1, 80 - w1.length * 5, 6, C_YEL, image.font8)
+            target.print(w2, 80 - w2.length * 5, 20, 1, image.font8)
+        } else {
+            target.print(titleName, 80 - titleName.length * 5, 12, C_YEL, image.font8)
+        }
+        // creator + school at the bottom (centred)
+        if (titleCreator.length > 0) {
+            const c = "CREATOR: " + titleCreator
+            target.print(c, 80 - c.length * 2, 104, 1, image.font5)
+        }
+        if (titleSchool.length > 0)
+            target.print(titleSchool, 80 - titleSchool.length * 2, 112, C_YEL, image.font5)
     }
 
     function drawMenu(target: Image) {
@@ -1347,6 +1376,14 @@ namespace fpSplit {
     //% count.min=2 count.max=4 count.defl=2
     export function setPlayers(count: number) {
         numPlayers = Math.max(2, Math.min(4, count))
+    }
+
+    /** Set the opening title screen text: game name, creator, and school. */
+    //% blockId=fpsplit_set_title block="set title %name|creator %creator|school %school"
+    export function setTitle(name: string, creator: string, school: string) {
+        titleName = name
+        titleCreator = creator
+        titleSchool = school
     }
 
 
