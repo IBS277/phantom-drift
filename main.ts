@@ -175,7 +175,7 @@ namespace fpSplit {
 
     // ---- pre-game menu (cursor over setting rows) ----
     // rows: 0 players,1 track,2 cpu,3 laps,4 pit,5 difficulty,6 weather,7 START
-    const MENU_ROWS = 7
+    const MENU_ROWS = 8
     let menuRow = 0
     let pitMode = 0                 // 0 OFF, 1 AUTO (pit when worn), 2 MANUAL (steer into pit lane)
     const PITMODE_NAMES = ["OFF", "AUTO", "MANUAL"]
@@ -237,6 +237,9 @@ namespace fpSplit {
             if (wi == 0) { wxMode = 0 }
             else if (wi == 5) { wxMode = 2 }
             else { wxMode = 1; wxFixed = wi - 1 }
+        } else if (menuRow == 6) {                  // sound on/off
+            soundOn = !soundOn
+            if (!soundOn) stopBgMusic()             // silence any looping tune immediately
         }
         // row 7 (START) has no value to adjust
     }
@@ -344,21 +347,22 @@ namespace fpSplit {
     function drawMenu(target: Image) {
         target.fill(C_SKY)
         target.fillRect(2, 2, 156, 116, 0)
-        target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
+        target.print("F1 SPLIT-SCREEN RACE", 24, 3, C_YEL, image.font5)
         const wxLabel = wxMode == 1 ? WX_NAMES[wxFixed] : WXMODE_NAMES[wxMode]
-        menuLine(target, 0, 16, "PLAYERS", "" + numPlayers)
-        menuLine(target, 1, 28, "TRACK", trackNames.length > 0 ? trackNames[selTrack] : "—")
-        menuLine(target, 2, 40, "LAPS", "" + lapsToWin)
-        menuLine(target, 3, 52, "PIT STOPS", PITMODE_NAMES[pitMode])
-        menuLine(target, 4, 64, "DIFFICULTY", DIFF_NAMES[difficulty])
-        menuLine(target, 5, 76, "WEATHER", wxLabel)
-        const startActive = menuRow == 6
-        target.fillRect(50, 88, 60, 11, startActive ? 6 : C_PANEL)
-        target.print("> START <", 56, 91, startActive ? 0 : 1, image.font5)
+        menuLine(target, 0, 13, "PLAYERS", "" + numPlayers)
+        menuLine(target, 1, 23, "TRACK", trackNames.length > 0 ? trackNames[selTrack] : "—")
+        menuLine(target, 2, 33, "LAPS", "" + lapsToWin)
+        menuLine(target, 3, 43, "PIT STOPS", PITMODE_NAMES[pitMode])
+        menuLine(target, 4, 53, "DIFFICULTY", DIFF_NAMES[difficulty])
+        menuLine(target, 5, 63, "WEATHER", wxLabel)
+        menuLine(target, 6, 73, "SOUND", soundOn ? "ON" : "OFF")
+        const startActive = menuRow == 7
+        target.fillRect(50, 85, 60, 11, startActive ? 6 : C_PANEL)
+        target.print("> START <", 56, 88, startActive ? 0 : 1, image.font5)
         // controls hint on TWO centred lines so nothing is cut off
         const h1 = "UP/DN MOVE   L/R CHANGE"
-        target.print(h1, 80 - h1.length * 2, 105, 1, image.font5)
-        target.print("A = GO", 80 - 6 * 2, 113, C_GRN, image.font5)
+        target.print(h1, 80 - h1.length * 2, 101, 1, image.font5)
+        target.print("A = GO", 80 - 6 * 2, 110, C_GRN, image.font5)
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
