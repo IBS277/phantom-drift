@@ -164,35 +164,54 @@ namespace fpSplit {
     // ---- track select (Phase 4) ----
     // Built-in tracks: curvature arrays. Index 0 is whatever the host passed to
     // run(); 1-3 are presets. selTrack picks one on the select screen.
-    const TRACK_NAMES = ["CUSTOM", "MONACO", "OVAL", "TWISTY"]
-    // MONACO: a tight street-circuit feel (hairpins + chicanes).
-    // Real Monaco corner sequence (one lap): start straight, Ste Devote (sharp
-    // right), Beau Rivage climb, Massenet (left), Casino, Mirabeau (right),
-    // FAIRMONT HAIRPIN (very tight right), Portier, tunnel, Nouvelle Chicane
-    // (right-left), Tabac (left), Swimming Pool (left-right-left), Rascasse
-    // (tight right), Anthony Noghes (right), back to the line.
+    // Three distinct circuits. Each curve SUMS to ~+10.5 so it turns a full
+    // clockwise loop and closes on the mini-map (buildMapPath uses ang+=c*0.6).
+    const TRACK_NAMES = ["MONACO", "SPEEDWAY", "GRAND PRIX"]
+
+    // MONACO — tight twisty street circuit (sharp hairpins + chicanes).
+    // Sum ~10.5 so the lap closes into a loop on the mini-map.
     const TRACK_MONACO = [
-        0, 0, 0,           // start / finish straight
-        1.2, 1.0,          // Ste Devote (sharp right)
-        0, 0,              // Beau Rivage climb
-        -0.8, -0.6,        // Massenet (left)
-        0.5,               // Casino (right)
-        0, 0,              // Casino straight
-        0.9,               // Mirabeau (right)
-        1.7, 1.8, 1.6,     // FAIRMONT HAIRPIN (very tight right)
-        0.6,               // Mirabeau Bas / Portier
-        0, 0,              // tunnel
-        0.6, -0.7,         // Nouvelle Chicane (right then left)
-        -0.8,              // Tabac (left)
-        -0.5, 0.7, -0.6,   // Swimming Pool (left-right-left)
-        1.3,               // La Rascasse (tight right)
-        0.8,               // Anthony Noghes (right)
+        0, 0,              // start / finish straight
+        1.3, 0.6,          // Ste Devote (sharp right)
+        0,                 // Beau Rivage
+        0.8,               // Massenet right sweep
+        0,                 // Casino straight
+        1.6, 0.8,          // FAIRMONT HAIRPIN (very tight)
+        0,                 // Portier
+        0.7,               // tunnel right
+        0,                 // straight
+        1.4, 0.6,          // Rascasse / Swimming Pool tight right
+        0,                 // short straight
+        1.0, 0.6,          // Noghes right
         0, 0               // run to the line
     ]
-    const TRACK_OVAL = [0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0, 0, 0.8, 0.9, 0.9, 0.8, 0, 0, 0]
-    const TRACK_TWISTY = [0, 0.9, -0.9, 0.8, -1.1, 1.2, -0.7, 0.6, -1.3, 1.0, -0.8, 0.5, -0.6, 1.1, -1.0, 0, 0]
-    let hostCurve = [0]              // the curve passed into run() (= CUSTOM)
-    let selTrack = 1                // default to MONACO on the picker
+
+    // SPEEDWAY — a clean OVAL: two long straights + two big 180° right sweeps.
+    const TRACK_SPEEDWAY = [
+        0, 0, 0, 0, 0,                 // back straight
+        1.0, 1.0, 1.0, 1.0, 1.0,       // turn 1 (180° right sweep)
+        0, 0, 0, 0, 0,                 // front straight
+        1.0, 1.0, 1.0, 1.0, 1.0        // turn 2 (180° right sweep)
+    ]
+
+    // GRAND PRIX — long flowing road course: fast sweeps + a couple chicanes.
+    const TRACK_GRANDPRIX = [
+        0, 0, 0,           // pit straight
+        0.9, 1.1,          // turn 1 (right)
+        0,                 // straight
+        0.7,               // gentle right
+        -0.5, 0.5,         // chicane (left-right)
+        1.0, 0.9,          // double-apex right
+        0,                 // back straight
+        1.2, 1.0,          // hairpin-ish right
+        0.6,               // sweep
+        -0.4, 0.4,         // chicane
+        1.1, 1.0,          // final corners (right)
+        0, 0               // home straight
+    ]
+
+    let hostCurve = [0]              // (kept; no longer in the menu)
+    let selTrack = 0                // default to MONACO on the picker
     let cpuCount = 0                // extra AI cars beyond human players (set on select)
 
     // ---- pre-game menu (cursor over setting rows) ----
@@ -245,7 +264,7 @@ namespace fpSplit {
         if (menuRow == 0) {                         // players 2..4
             numPlayers = Math.max(2, Math.min(4, numPlayers + dir))
         } else if (menuRow == 1) {                  // track
-            selTrack = (selTrack + dir + 4) % 4
+            selTrack = (selTrack + dir + 3) % 3
         } else if (menuRow == 2) {                  // laps 1..9
             lapsToWin = Math.max(1, Math.min(9, lapsToWin + dir))
         } else if (menuRow == 3) {                  // pit stops off/auto/manual
@@ -274,9 +293,9 @@ namespace fpSplit {
     }
 
     function beginRaceFromMenu() {
-        // CUSTOM = the curve the host passed to run(); others are presets.
-        const chosen = selTrack == 0 ? hostCurve : selTrack == 1 ? TRACK_MONACO
-            : selTrack == 2 ? TRACK_OVAL : TRACK_TWISTY
+        // pick the chosen circuit: 0 Monaco, 1 Speedway, 2 Grand Prix
+        const chosen = selTrack == 0 ? TRACK_MONACO
+            : selTrack == 1 ? TRACK_SPEEDWAY : TRACK_GRANDPRIX
         setTrack(chosen, segLen)
         buildItems()
         pitD = Math.floor(lapLen * 0.85)   // pit zone near the end of the lap
