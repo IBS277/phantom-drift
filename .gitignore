@@ -19,3 +19,7 @@ PASTE_INTO_ARCADE.ts
 
 # Local-only rules guide (not part of the extension)
 RULES.html
+
+# Local GitHub token (never commit)
+*phantom-drift-token*
+.token
