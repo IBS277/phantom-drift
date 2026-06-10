@@ -1163,28 +1163,50 @@ namespace fpSplit {
         }
     }
 
-    // ---------------------------------------------------------------- engine sound
-    // A short tone played periodically during the race whose pitch rises with the
-    // fastest human player's speed — so the faster you go, the higher the engine
-    // revs. Throttled so it sounds like a continuous engine, not a buzz.
+    // ---------------------------------------------------------------- sound & music
+    // Two layered tones make a fuller engine: a low "body" rumble that always plays,
+    // plus a higher "whine" that climbs with speed. A small wobble (driven by the
+    // wall clock) keeps it from sounding like one flat dead tone. Boost adds a roar.
     function updateEngineSound(dt: number) {
         if (!soundOn) return
         engineSndT -= dt
         if (engineSndT > 0) return
-        engineSndT = 0.12                       // ~8 revs/second
-        // fastest human speed (so the sound tracks "the action")
-        let top = 0
-        for (let i = 0; i < numPlayers; i++) if (spd[i] > top) top = spd[i]
+        engineSndT = 0.10                       // ~10 ticks/second
+
+        // fastest human speed (so the sound tracks "the action"), and is anyone boosting
+        let top = 0, anyBoost = false
+        for (let i = 0; i < numPlayers; i++) {
+            if (spd[i] > top) top = spd[i]
+            if (boosting[i]) anyBoost = true
+        }
         const frac = Math.min(1, top / BOOST_SPEED)   // 0..1 of absolute top speed
-        const freq = 70 + Math.floor(frac * 190)       // 70Hz idle -> ~260Hz flat-out
-        const vol = 30 + Math.floor(frac * 70)          // quieter when slow
+        // a gentle wobble so the engine "breathes" instead of buzzing flat
+        const wob = Math.floor(6 * Math.sin(clock * 33))
+
+        // layer 1 — low body rumble (sawtooth), always present, deepens slightly with speed
+        const bodyF = 55 + Math.floor(frac * 70) + wob
+        const bodyV = 40 + Math.floor(frac * 40)
         music.play(
-            music.createSoundEffect(
-                WaveShape.Sawtooth, freq, freq, vol, vol,
-                90, SoundExpressionEffect.None, InterpolationCurve.Linear
-            ),
+            music.createSoundEffect(WaveShape.Sawtooth, bodyF, bodyF + 8, bodyV, bodyV,
+                95, SoundExpressionEffect.None, InterpolationCurve.Linear),
             music.PlaybackMode.InBackground
         )
+        // layer 2 — higher whine (triangle), gets louder & higher the faster you go
+        const whineF = 160 + Math.floor(frac * 260) - wob
+        const whineV = 10 + Math.floor(frac * 55)
+        music.play(
+            music.createSoundEffect(WaveShape.Triangle, whineF, whineF, whineV, whineV,
+                95, SoundExpressionEffect.None, InterpolationCurve.Linear),
+            music.PlaybackMode.InBackground
+        )
+        // boost roar — a quick rising sweep while anyone is boosting
+        if (anyBoost) {
+            music.play(
+                music.createSoundEffect(WaveShape.Noise, 300, 600, 90, 30,
+                    90, SoundExpressionEffect.None, InterpolationCurve.Curve),
+                music.PlaybackMode.InBackground
+            )
+        }
     }
 
     // Start-light beeps: three short reds then a higher "GO" as the lights go green.
@@ -1201,6 +1223,26 @@ namespace fpSplit {
                 music.PlaybackMode.UntilDone
             )
         }
+    }
+
+    // ----- background music (looping tunes per game phase) -----
+    // A relaxed arpeggio on the title/menu, an upbeat driving groove during the race,
+    // and a triumphant fanfare on the podium. Uses note-string melodies that loop.
+    const MENU_TUNE = ["E5:2", "G5:2", "B5:2", "A5:2", "G5:2", "E5:2", "D5:2", "E5:4"]
+    const WIN_TUNE = ["G5:2", "G5:2", "G5:2", "C6:6", "A5:2", "C6:2", "G5:6"]
+
+    let curTune = -1                 // which background tune is playing (-1 = none)
+    function playBgMusic(which: number, tune: string[], tempo: number, loop: boolean) {
+        if (!soundOn) { curTune = -1; return }
+        if (curTune == which) return            // already playing this one
+        curTune = which
+        music.stopAllSounds()
+        music.startMelody(tune, loop ? MelodyOptions.ForeverInBackground : MelodyOptions.OnceInBackground)
+        music.setTempo(tempo)
+    }
+    function stopBgMusic() {
+        curTune = -1
+        music.stopAllSounds()
     }
 
     // ---------------------------------------------------------------- driving
@@ -1724,11 +1766,20 @@ namespace fpSplit {
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
             if (phase == PH_TITLE) {           // title splash waits for A
                 titleT += dt                   // (used only to blink the prompt)
+                playBgMusic(0, MENU_TUNE, 100, true)
                 return
             }
-            if (phase == PH_SELECT) return   // menu waits for the player to press A
-            if (phase == PH_DONE) { podiumT += dt; return }
+            if (phase == PH_SELECT) {          // menu waits for the player to press A
+                playBgMusic(0, MENU_TUNE, 100, true)
+                return
+            }
+            if (phase == PH_DONE) {
+                podiumT += dt
+                playBgMusic(3, WIN_TUNE, 120, false)   // victory fanfare (once)
+                return
+            }
             if (phase == PH_LIGHTS) {
+                if (curTune != -1) stopBgMusic()       // hush the menu tune for the lights
                 lightsT += dt
                 updateLightBeeps()
                 if (lightsT >= 2.7) {
@@ -1738,6 +1789,7 @@ namespace fpSplit {
                 return
             }
             if (phase != PH_RACE || finished) return
+            if (curTune != -1) stopBgMusic()           // race uses live engine sound, not a loop
             for (let i = 0; i < numPlayers + cpuCount; i++) drive(i, dt)
             updateEngineSound(dt)
 
