@@ -1185,7 +1185,8 @@ namespace fpSplit {
         const frac = Math.min(1, top / BOOST_SPEED)   // 0..1 of absolute top speed
         const wob = Math.floor(6 * Math.sin(clock * 33))   // gentle breathing
         const freq = 80 + Math.floor(frac * 220) + wob     // ~80Hz idle -> ~300Hz flat-out
-        music.playTone(freq, 100)              // short tone; next tick continues the rev
+        // non-blocking so the race never stutters waiting on the tone
+        control.runInParallel(function () { music.playTone(freq, 100) })
     }
 
     // Start-light beeps: three short reds then a higher "GO" as the lights go green.
@@ -1212,7 +1213,11 @@ namespace fpSplit {
         curTune = which
         music.stopAllSounds()
         music.setTempo(tempo)
-        music.playMelody(tune, tempo)
+        // Play on a separate fiber so the melody does NOT block the game loop —
+        // otherwise the title screen wouldn't render until the tune finished.
+        control.runInParallel(function () {
+            music.playMelody(tune, tempo)
+        })
     }
     function stopBgMusic() {
         if (curTune == -1) return

@@ -1,7 +1,7 @@
 {
     "name": "Phantom Drift",
-    "version": "1.5.2",
-    "description": "First-person split-screen racing (2-4 players). Ishan S. Millburn Middle School.\nVersion 1.5.2",
+    "version": "1.5.3",
+    "description": "First-person split-screen racing (2-4 players). Ishan S. Millburn Middle School.\nVersion 1.5.3",
     "dependencies": {
         "device": "*"
     },
