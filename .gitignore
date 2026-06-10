@@ -11,3 +11,7 @@ node_modules/
 
 # OS / editor cruft
 .DS_Store
+.gstack/
+
+# My local game code (pasted into the Arcade project, NOT part of the extension)
+my_game_main.ts
