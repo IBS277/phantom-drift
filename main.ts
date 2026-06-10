@@ -141,12 +141,11 @@ namespace fpSplit {
     const TYRE_GRIP_MUL = [1.12, 1.0, 0.92, 0.95]    // base (dry) grip per compound
 
     // ---- game state ----
-    const PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
-    let phase = PH_SELECT
+    const PH_TITLE = 4, PH_SELECT = 0, PH_LIGHTS = 1, PH_RACE = 2, PH_DONE = 3
+    let phase = PH_TITLE          // game opens on the title splash, then the menu
+    let titleT = 0                // seconds the title screen has shown
     let numPlayers = 2
     let lightsT = 0
-    let selectT = 0                 // seconds the setup menu has been shown
-    let autoStartSecs = 5           // menu auto-starts after this many seconds (0 = wait for A)
     let finished = false
     let winner = -1
     let started = false
@@ -285,20 +284,27 @@ namespace fpSplit {
         target.print(label, 16, y, labCol, image.font5)
         target.print(value, 96, y, valCol, image.font5)
     }
+    // Opening title splash: game name + creator + school. Shows ~2 seconds.
+    function drawTitle(target: Image) {
+        target.fill(0)
+        // sky/track stripe backdrop for flavour
+        target.fillRect(0, 30, 160, 22, C_SKY)
+        target.fillRect(0, 52, 160, 14, C_GRASS_L)
+        // checkered band under the title
+        for (let x = 0; x < 160; x += 8) target.fillRect(x, 26, 4, 3, ((x >> 3) & 1) ? 1 : 15)
+        // game name (big)
+        target.print("PHOTOM", 40, 34, C_YEL, image.font8)
+        target.print("DRIFT", 52, 50, C_RED, image.font8)
+        // a little car icon
+        target.fillRect(74, 70, 12, 6, C_RED)
+        target.fillRect(72, 71, 3, 4, 15)
+        target.fillRect(85, 71, 3, 4, 15)
+        // creator + school at the bottom
+        target.print("CREATOR: ISHAN SATHAVALLI", 12, 96, 1, image.font5)
+        target.print("MILLBURN MIDDLE SCHOOL", 22, 106, C_GRN, image.font5)
+    }
+
     function drawMenu(target: Image) {
-        // In the FINAL 3 seconds, take over the whole screen with a big
-        // single-number countdown: 3 ... 2 ... 1 ... then the race starts.
-        const left = autoStartSecs > 0 ? Math.ceil(autoStartSecs - selectT) : 99
-        if (autoStartSecs > 0 && left <= 3) {
-            target.fill(0)
-            target.print("GET READY!", 46, 18, C_YEL, image.font5)
-            // huge centred number (font8 scaled up by drawing it big)
-            const n = Math.max(1, left)
-            drawBigNumber(target, n, 80, 60)
-            target.print("A = GO NOW", 52, 104, 1, image.font5)
-            return
-        }
-        // normal settings menu
         target.fill(C_SKY)
         target.fillRect(2, 2, 156, 116, 0)
         target.print("F1 SPLIT-SCREEN RACE", 24, 4, C_YEL, image.font5)
@@ -312,28 +318,7 @@ namespace fpSplit {
         const startActive = menuRow == 6
         target.fillRect(50, 90, 60, 11, startActive ? 6 : C_PANEL)
         target.print("> START <", 56, 93, startActive ? 0 : 1, image.font5)
-        target.print("UP/DN MOVE  L/R CHANGE  A=GO NOW", 4, 112, 1, image.font5)
-    }
-
-    // Draw a big centred digit (1-3) using filled rectangles, centred at (cx,cy).
-    function drawBigNumber(target: Image, n: number, cx: number, cy: number) {
-        const w = 22, h = 34, th = 5      // glyph width/height/stroke thickness
-        const l = cx - (w >> 1), t = cy - (h >> 1), r = l + w, b = t + h, mid = t + (h >> 1)
-        const col = C_GRN
-        if (n == 1) {
-            target.fillRect(cx - (th >> 1), t, th, h, col)
-        } else if (n == 2) {
-            target.fillRect(l, t, w, th, col)            // top
-            target.fillRect(r - th, t, th, h >> 1, col)  // upper-right
-            target.fillRect(l, mid - (th >> 1), w, th, col) // middle
-            target.fillRect(l, mid, th, h >> 1, col)     // lower-left
-            target.fillRect(l, b - th, w, th, col)       // bottom
-        } else { // 3
-            target.fillRect(l, t, w, th, col)            // top
-            target.fillRect(l, mid - (th >> 1), w, th, col) // middle
-            target.fillRect(l, b - th, w, th, col)       // bottom
-            target.fillRect(r - th, t, th, h, col)       // right full
-        }
+        target.print("UP/DN MOVE  L/R CHANGE  A=GO", 4, 112, 1, image.font5)
     }
 
     // Full-screen podium celebration: 1st/2nd/3rd on stepped blocks with their
@@ -1364,12 +1349,6 @@ namespace fpSplit {
         numPlayers = Math.max(2, Math.min(4, count))
     }
 
-    /** Auto-start the race after this many seconds on the menu (0 = wait for A). */
-    //% blockId=fpsplit_set_autostart block="auto-start menu after %seconds seconds"
-    //% seconds.min=0 seconds.max=15 seconds.defl=4
-    export function setAutoStart(seconds: number) {
-        autoStartSecs = Math.max(0, seconds)
-    }
 
     /** Run a function when a player wins (gets the winning player number 1–4). */
     //% blockId=fpsplit_on_win block="on player win $winner"
@@ -1472,7 +1451,6 @@ namespace fpSplit {
         setLaps(laps)
         if (started) return
         started = true
-        selectT = 0                 // begin the menu auto-start countdown
         if (curve && curve.length > 1) hostCurve = curve
 
         // Enable MakeCode's online multiplayer hosting: referencing a
@@ -1521,6 +1499,10 @@ namespace fpSplit {
         controller.player4.A.onEvent(ControllerButtonEvent.Pressed, function () { if (pitChoosing[3]) confirmTyre(3) })
 
         scene.createRenderable(0, function (target: Image) {
+            if (phase == PH_TITLE) {
+                drawTitle(target)
+                return
+            }
             if (phase == PH_SELECT) {
                 drawMenu(target)
                 return
@@ -1567,12 +1549,12 @@ namespace fpSplit {
         game.onUpdate(function () {
             const dt = game.eventContext().deltaTime
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
-            if (phase == PH_SELECT) {
-                // menu auto-starts after autoStartSecs (players can still press A early)
-                selectT += dt
-                if (autoStartSecs > 0 && selectT >= autoStartSecs) beginRaceFromMenu()
+            if (phase == PH_TITLE) {           // title splash for 2 seconds, then menu
+                titleT += dt
+                if (titleT >= 2) phase = PH_SELECT
                 return
             }
+            if (phase == PH_SELECT) return   // menu waits for the player to press A
             if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
                 lightsT += dt
