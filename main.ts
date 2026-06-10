@@ -1168,49 +1168,24 @@ namespace fpSplit {
     }
 
     // ---------------------------------------------------------------- sound & music
-    // Two layered tones make a fuller engine: a low "body" rumble that always plays,
-    // plus a higher "whine" that climbs with speed. A small wobble (driven by the
-    // wall clock) keeps it from sounding like one flat dead tone. Boost adds a roar.
+    // Uses only the classic, always-available music APIs (playTone / playMelody)
+    // so it compiles on every MakeCode Arcade version.
+    //
+    // Engine: a short tone played repeatedly whose pitch rises with the fastest
+    // player's speed, with a small wobble so it "breathes" instead of buzzing flat.
     function updateEngineSound(dt: number) {
         if (!soundOn) return
         engineSndT -= dt
         if (engineSndT > 0) return
-        engineSndT = 0.10                       // ~10 ticks/second
+        engineSndT = 0.11                       // ~9 revs/second
 
-        // fastest human speed (so the sound tracks "the action"), and is anyone boosting
-        let top = 0, anyBoost = false
-        for (let i = 0; i < numPlayers; i++) {
-            if (spd[i] > top) top = spd[i]
-            if (boosting[i]) anyBoost = true
-        }
+        // fastest human speed (so the sound tracks "the action")
+        let top = 0
+        for (let i = 0; i < numPlayers; i++) if (spd[i] > top) top = spd[i]
         const frac = Math.min(1, top / BOOST_SPEED)   // 0..1 of absolute top speed
-        // a gentle wobble so the engine "breathes" instead of buzzing flat
-        const wob = Math.floor(6 * Math.sin(clock * 33))
-
-        // layer 1 — low body rumble (sawtooth), always present, deepens slightly with speed
-        const bodyF = 55 + Math.floor(frac * 70) + wob
-        const bodyV = 40 + Math.floor(frac * 40)
-        music.play(
-            music.createSoundEffect(WaveShape.Sawtooth, bodyF, bodyF + 8, bodyV, bodyV,
-                95, SoundExpressionEffect.None, InterpolationCurve.Linear),
-            music.PlaybackMode.InBackground
-        )
-        // layer 2 — higher whine (triangle), gets louder & higher the faster you go
-        const whineF = 160 + Math.floor(frac * 260) - wob
-        const whineV = 10 + Math.floor(frac * 55)
-        music.play(
-            music.createSoundEffect(WaveShape.Triangle, whineF, whineF, whineV, whineV,
-                95, SoundExpressionEffect.None, InterpolationCurve.Linear),
-            music.PlaybackMode.InBackground
-        )
-        // boost roar — a quick rising sweep while anyone is boosting
-        if (anyBoost) {
-            music.play(
-                music.createSoundEffect(WaveShape.Noise, 300, 600, 90, 30,
-                    90, SoundExpressionEffect.None, InterpolationCurve.Curve),
-                music.PlaybackMode.InBackground
-            )
-        }
+        const wob = Math.floor(6 * Math.sin(clock * 33))   // gentle breathing
+        const freq = 80 + Math.floor(frac * 220) + wob     // ~80Hz idle -> ~300Hz flat-out
+        music.playTone(freq, 100)              // short tone; next tick continues the rev
     }
 
     // Start-light beeps: three short reds then a higher "GO" as the lights go green.
@@ -1220,31 +1195,27 @@ namespace fpSplit {
         const beat = lightsT < 0.6 ? -1 : lightsT < 1.2 ? 0 : lightsT < 1.8 ? 1 : lightsT < 2.4 ? 2 : 3
         if (beat >= 0 && beat != lastLightBeep) {
             lastLightBeep = beat
-            const f = beat < 3 ? 330 : 660       // GO! is an octave up
-            music.play(
-                music.createSoundEffect(WaveShape.Square, f, f, 180, 120, 160,
-                    SoundExpressionEffect.None, InterpolationCurve.Linear),
-                music.PlaybackMode.UntilDone
-            )
+            music.playTone(beat < 3 ? 330 : 660, 150)   // GO! is an octave up
         }
     }
 
     // ----- background music (looping tunes per game phase) -----
-    // A relaxed arpeggio on the title/menu, an upbeat driving groove during the race,
-    // and a triumphant fanfare on the podium. Uses note-string melodies that loop.
-    const MENU_TUNE = ["E5:2", "G5:2", "B5:2", "A5:2", "G5:2", "E5:2", "D5:2", "E5:4"]
-    const WIN_TUNE = ["G5:2", "G5:2", "G5:2", "C6:6", "A5:2", "C6:2", "G5:6"]
+    // A relaxed arpeggio on the title/menu and a triumphant fanfare on the podium.
+    // playMelody loops in the background; we stop it on phase changes.
+    const MENU_TUNE = "E5 G5 B5 A5 G5 E5 D5 E5"
+    const WIN_TUNE = "G5 G5 G5 C6 A5 C6 G5"
 
     let curTune = -1                 // which background tune is playing (-1 = none)
-    function playBgMusic(which: number, tune: string[], tempo: number, loop: boolean) {
+    function playBgMusic(which: number, tune: string, tempo: number) {
         if (!soundOn) { curTune = -1; return }
         if (curTune == which) return            // already playing this one
         curTune = which
         music.stopAllSounds()
-        music.startMelody(tune, loop ? MelodyOptions.ForeverInBackground : MelodyOptions.OnceInBackground)
         music.setTempo(tempo)
+        music.playMelody(tune, tempo)
     }
     function stopBgMusic() {
+        if (curTune == -1) return
         curTune = -1
         music.stopAllSounds()
     }
@@ -1770,16 +1741,16 @@ namespace fpSplit {
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
             if (phase == PH_TITLE) {           // title splash waits for A
                 titleT += dt                   // (used only to blink the prompt)
-                playBgMusic(0, MENU_TUNE, 100, true)
+                playBgMusic(0, MENU_TUNE, 100)
                 return
             }
             if (phase == PH_SELECT) {          // menu waits for the player to press A
-                playBgMusic(0, MENU_TUNE, 100, true)
+                playBgMusic(0, MENU_TUNE, 100)
                 return
             }
             if (phase == PH_DONE) {
                 podiumT += dt
-                playBgMusic(3, WIN_TUNE, 120, false)   // victory fanfare (once)
+                playBgMusic(3, WIN_TUNE, 120)   // victory fanfare
                 return
             }
             if (phase == PH_LIGHTS) {
