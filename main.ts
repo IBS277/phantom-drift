@@ -41,6 +41,9 @@ enum RaceDifficulty {
 
 //% color="#d83b3b" weight=100 icon="" block="Racing"
 namespace fpSplit {
+    // build version, shown on the title screen so you can confirm which is loaded
+    const VERSION = "v1.5.6"
+
     // ---- screen ----
     const W = 160, H = 120
 
@@ -239,7 +242,7 @@ namespace fpSplit {
             else { wxMode = 1; wxFixed = wi - 1 }
         } else if (menuRow == 6) {                  // sound on/off
             soundOn = !soundOn
-            if (!soundOn) stopBgMusic()             // silence any looping tune immediately
+            if (!soundOn) music.stopAllSounds()     // silence immediately
         }
         // row 7 (START) has no value to adjust
     }
@@ -316,6 +319,8 @@ namespace fpSplit {
 
         // game NAME — big, on ONE line (font8 ≈ 6px/char), centred near the top
         target.print(titleName, 80 - titleName.length * 3, 6, C_YEL, image.font8)
+        // tiny version stamp (top-right) so you can confirm which build is loaded
+        target.print(VERSION, 160 - VERSION.length * 4, 0, 1, image.font5)
 
         // ---- Monaco track outline (logo) — smaller, centred, above the text ----
         const sc = 0.62                    // scale the track down so text fits below
@@ -1167,27 +1172,9 @@ namespace fpSplit {
         }
     }
 
-    // ---------------------------------------------------------------- sound & music
-    // Uses only the classic, always-available music APIs (playTone / playMelody)
-    // so it compiles on every MakeCode Arcade version.
-    //
-    // Engine: a short tone played repeatedly whose pitch rises with the fastest
-    // player's speed, with a small wobble so it "breathes" instead of buzzing flat.
-    function updateEngineSound(dt: number) {
-        if (!soundOn) return
-        engineSndT -= dt
-        if (engineSndT > 0) return
-        engineSndT = 0.11                       // ~9 revs/second
-
-        // fastest human speed (so the sound tracks "the action")
-        let top = 0
-        for (let i = 0; i < numPlayers; i++) if (spd[i] > top) top = spd[i]
-        const frac = Math.min(1, top / BOOST_SPEED)   // 0..1 of absolute top speed
-        const wob = Math.floor(6 * Math.sin(clock * 33))   // gentle breathing
-        const freq = 80 + Math.floor(frac * 220) + wob     // ~80Hz idle -> ~300Hz flat-out
-        // non-blocking so the race never stutters waiting on the tone
-        control.runInParallel(function () { music.playTone(freq, 100) })
-    }
+    // ---------------------------------------------------------------- sound
+    // Music and the engine drone were removed — they sounded bad on the chip.
+    // The only sound kept is the short start-light beeps (clean and useful).
 
     // Start-light beeps: three short reds then a higher "GO" as the lights go green.
     function updateLightBeeps() {
@@ -1198,31 +1185,6 @@ namespace fpSplit {
             lastLightBeep = beat
             music.playTone(beat < 3 ? 330 : 660, 150)   // GO! is an octave up
         }
-    }
-
-    // ----- background music (looping tunes per game phase) -----
-    // A relaxed arpeggio on the title/menu and a triumphant fanfare on the podium.
-    // playMelody loops in the background; we stop it on phase changes.
-    const MENU_TUNE = "E5 G5 B5 A5 G5 E5 D5 E5"
-    const WIN_TUNE = "G5 G5 G5 C6 A5 C6 G5"
-
-    let curTune = -1                 // which background tune is playing (-1 = none)
-    function playBgMusic(which: number, tune: string, tempo: number) {
-        if (!soundOn) { curTune = -1; return }
-        if (curTune == which) return            // already playing this one
-        curTune = which
-        music.stopAllSounds()
-        music.setTempo(tempo)
-        // Play on a separate fiber so the melody does NOT block the game loop —
-        // otherwise the title screen wouldn't render until the tune finished.
-        control.runInParallel(function () {
-            music.playMelody(tune, tempo)
-        })
-    }
-    function stopBgMusic() {
-        if (curTune == -1) return
-        curTune = -1
-        music.stopAllSounds()
     }
 
     // ---------------------------------------------------------------- driving
@@ -1746,21 +1708,11 @@ namespace fpSplit {
             clock += dt   // wall clock, always advancing (rain, etc. independent of speed)
             if (phase == PH_TITLE) {           // title splash waits for A
                 titleT += dt                   // (used only to blink the prompt)
-                // NO music here — keep the title screen silent so it always shows
-                // instantly. Music starts when the player enters the menu (PH_SELECT).
                 return
             }
-            if (phase == PH_SELECT) {          // menu waits for the player to press A
-                playBgMusic(0, MENU_TUNE, 100)
-                return
-            }
-            if (phase == PH_DONE) {
-                podiumT += dt
-                playBgMusic(3, WIN_TUNE, 120)   // victory fanfare
-                return
-            }
+            if (phase == PH_SELECT) return     // menu waits for the player to press A
+            if (phase == PH_DONE) { podiumT += dt; return }
             if (phase == PH_LIGHTS) {
-                if (curTune != -1) stopBgMusic()       // hush the menu tune for the lights
                 lightsT += dt
                 updateLightBeeps()
                 if (lightsT >= 2.7) {
@@ -1770,9 +1722,7 @@ namespace fpSplit {
                 return
             }
             if (phase != PH_RACE || finished) return
-            if (curTune != -1) stopBgMusic()           // race uses live engine sound, not a loop
             for (let i = 0; i < numPlayers + cpuCount; i++) drive(i, dt)
-            updateEngineSound(dt)
 
             // shared dynamic weather: each time the leader completes a lap, shift
             // the weather (sun -> rain -> fog -> night -> ...) for everyone.
